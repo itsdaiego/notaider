@@ -1,0 +1,5 @@
+.aider*
+__pycache__/
+notaider*/
+venv/
+dist/
