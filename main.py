@@ -7,6 +7,8 @@ from anthropic import Anthropic
 import os
 from typing import Optional
 
+# ANSI color codes
+GREEN = '\033[92m'
 
 class NotAider:
     def __init__(self, api_key: str):
@@ -79,9 +81,9 @@ async def main():
     session = PromptSession()
     logger = logging.getLogger("notaider")
 
-    print("Welcome to NotAider CLI!")
-    print("Type '/ask <your prompt>' to enhance your prompt for AI interactions.")
-    print("Type 'exit' or press Ctrl+D to quit.")
+    print(f"{GREEN}Welcome to NotAider CLI!")
+    print(f"{GREEN}Type '/ask <your prompt>' to enhance your prompt for AI interactions.")
+    print(f"{GREEN}Type 'exit' or press Ctrl+D to quit.")
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
 
@@ -92,44 +94,47 @@ async def main():
             if command.startswith('/ask '):
                 content = command[5:].strip()
                 if not content:
-                    print("Usage: /ask <your prompt>")
+                    print(f"{GREEN}Usage: /ask <your prompt>")
                     continue
                 
                 if not api_key:
-                    print("Error: ANTHROPIC_API_KEY environment variable not set")
-                    print("Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
+                    print(f"{GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
+                    print(f"{GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
                     continue
 
-                print("#############################")
-                print("Enhancing your prompt...")
-                print("#############################")
+                print(f"{GREEN}{'='*29}")
+                print(f"{GREEN}Enhancing your prompt...")
+                print(f"{GREEN}{'='*29}")
                 
                 try:
                     notaider = NotAider(api_key)
                     enhanced = await notaider.enhance_prompt(content)
-                    print("#############################")
-                    print("Enhanced Prompt:")
-                    print("#############################")
-                    print(enhanced)
-                    print("#############################")
-                    print("Generating Final Response:")
-                    print("#############################")
+                    print(f"{GREEN}{'='*29}")
+                    print(f"{GREEN}Enhanced Prompt:")
+                    print(f"{GREEN}{'='*29}")
+                    print(f"{GREEN}{enhanced}")
+                    print(f"{GREEN}{'='*29}")
+                    print(f"{GREEN}Generating Final Response:")
+                    print(f"{GREEN}{'='*29}")
                     if enhanced.startswith("Error"):
-                        print(enhanced)
+                        print(f"{GREEN}{enhanced}")
                         continue
 
                     output = await notaider.process_request(enhanced)
                     
                     if output and output.startswith("Error"):
-                        print(output)
+                        print(f"{GREEN}{output}")
+                    else:
+                        print(f"{GREEN}{output}")
 
-                    
-                    print(output)
                 except Exception as e:
-                    print(f"Error initializing NotAider: {str(e)}")
-            print("your command entered:", command)
-        except EOFError:
-            logger.info("Someone pressed Ctrl+D, exiting...")
+                    print(f"{GREEN}Error initializing NotAider: {str(e)}")
+            
+            print(f"{GREEN}your command is invalid: {command}")
+            print(f"{GREEN}Possible commands: /ask <your_prompt>")
+            
+        except KeyboardInterrupt:
+            print(f"{GREEN}Bye!")
             break
 
 
