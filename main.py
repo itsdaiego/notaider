@@ -3,6 +3,7 @@
 from prompt_toolkit import PromptSession
 import asyncio
 import logging
+from storage import Storage
 from anthropic import Anthropic
 import os
 from typing import Optional
@@ -129,18 +130,17 @@ async def main():
 
                 except Exception as e:
                     print(f"{GREEN}Error initializing NotAider: {str(e)}")
-            if command.startswith('/add'):]
-                storage = Storage()
 
-                storage.store_files(os.listdir('.'))
-                # files = os.listdir('.')
-                # store_dir = os
-                #
-                # for file in files:
-                #     print(f"{GREEN}Found Python file: {file}")
-            
-            print(f"{GREEN}your command is invalid: {command}")
-            print(f"{GREEN}Possible commands: /ask <your_prompt>")
+            elif command.startswith('/add'):
+                storage = Storage(storage_dir='db', app_dir='app')
+                filenames = storage.store_files()
+
+                print(f"{GREEN}Files added:")
+                for file in filenames:
+                    print(f"{GREEN}{file}")
+            else:
+                print(f"{GREEN}your command is invalid: {command}")
+                print(f"{GREEN}Possible commands: /ask, /add <your_prompt>")
             
         except (KeyboardInterrupt, EOFError):
             print(f"{GREEN}Bye!")
