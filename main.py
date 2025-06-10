@@ -129,11 +129,20 @@ async def main():
 
                 except Exception as e:
                     print(f"{GREEN}Error initializing NotAider: {str(e)}")
+            if command.startswith('/add'):]
+                storage = Storage()
+
+                storage.store_files(os.listdir('.'))
+                # files = os.listdir('.')
+                # store_dir = os
+                #
+                # for file in files:
+                #     print(f"{GREEN}Found Python file: {file}")
             
             print(f"{GREEN}your command is invalid: {command}")
             print(f"{GREEN}Possible commands: /ask <your_prompt>")
             
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             print(f"{GREEN}Bye!")
             break
 
