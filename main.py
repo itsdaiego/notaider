@@ -2,7 +2,6 @@
 
 from prompt_toolkit import PromptSession
 import asyncio
-import logging
 from storage import Storage
 from anthropic import Anthropic
 import os
@@ -18,24 +17,43 @@ class NotAider:
     
     async def enhance_prompt(self, content: str) -> str:
         system_prompt = """You are an AI assistant that enhances and improves user prompts to make them more effective for AI interactions. 
-Your task is to take the user's input and rewrite it to be clearer, more specific, and more likely to get a high-quality response.
+Your task is to take the user's input and rewrite it to be clearer, more specific according to the knowledge base, and more likely to get a high-quality response.
 
 Guidelines:
 - Make prompts more specific and actionable
-- Add context where helpful
 - Structure requests clearly
 - Maintain the original intent
-- Keep it concise but comprehensive"""
+- Keep it concise but comprehensive
+- Use the additional context from the knowledge base to enhance the prompt"""
+
+        storage = Storage(storage_dir='db', app_dir='app')
+        try:
+            results = storage.search_content(content, top_k=3)
+
+            context = ""
+            if results:
+                for i, result in enumerate(results, 1):
+                    if result['similarity'] > 0.7: # threshold of similarity
+                        print(f'HEY YO {result["similarity"]}')
+                        context += f"\n{i}: {result['filename']} (similarity: {result['similarity']:.2f}):\n"
+                        context += f"{result['content'][:500]}{'...' if len(result['content']) > 500 else ''}\n"
+
+            user_message = f"Please enhance this prompt: {content}{context}"
+
+        except Exception as e:
+            # Fallback to original behavior if embeddings not available
+            print(f"Note: Could not access embeddings database: {str(e)}")
+            user_message = f"Please enhance this prompt: {content}"
 
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1000,
+                max_tokens=1500,  # Increased to handle context
                 system=system_prompt,
                 messages=[
                     {
                         "role": "user", 
-                        "content": f"Please enhance this prompt: {content}"
+                        "content": user_message
                     }
                 ]
             )
@@ -80,7 +98,6 @@ Guidelines:
 
 async def main():
     session = PromptSession()
-    logger = logging.getLogger("notaider")
 
     print(f"{GREEN}Welcome to NotAider CLI!")
     print(f"{GREEN}Type '/ask <your prompt>' to enhance your prompt for AI interactions.")
