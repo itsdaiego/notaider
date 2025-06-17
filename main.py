@@ -16,15 +16,18 @@ class NotAider:
         self.model = "claude-3-5-haiku-20241022"
     
     async def enhance_prompt(self, content: str) -> str:
-        system_prompt = """You are an AI assistant that enhances and improves user prompts to make them more effective for AI interactions. 
-Your task is to take the user's input and rewrite it to be clearer, more specific according to the knowledge base, and more likely to get a high-quality response.
+        system_prompt = """You are an AI assistant that analyzes code and provides direct answers based on the provided file context.
+
+When given a user query and relevant file content, your task is to:
+1. First, check if the provided context contains the information needed to answer the query directly
+2. If yes, provide a direct answer using the code content
+3. If no, then enhance the prompt with the available context
 
 Guidelines:
-- Make prompts more specific and actionable
-- Structure requests clearly
-- Maintain the original intent
-- Keep it concise but comprehensive
-- Use the additional context from the knowledge base to enhance the prompt"""
+- If the user asks about methods, functions, classes, or specific code elements and the context contains that information, provide a direct code analysis
+- Use the actual code content to answer questions about implementation details
+- When context is available, prioritize answering the question directly over prompt enhancement
+- Only fall back to prompt enhancement when the context doesn't contain the requested information"""
 
         storage = Storage(storage_dir='db', app_dir='app')
         try:
@@ -33,15 +36,18 @@ Guidelines:
             context = ""
             if results:
                 for i, result in enumerate(results, 1):
-                    if result['similarity'] > 0.7: # threshold of similarity
-                        print(f'HEY YO {result["similarity"]}')
+                    if result['similarity'] > 0.4 or i == 1: # i == 1 to retrieve the first result, even when less than 0.4
+                        print(f'Including {result["filename"]} (similarity: {result["similarity"]:.3f})')
+                        print(f'Result length: {len(result["content"])}')
                         context += f"\n{i}: {result['filename']} (similarity: {result['similarity']:.2f}):\n"
-                        context += f"{result['content'][:500]}{'...' if len(result['content']) > 500 else ''}\n"
+                        context += f"{result['content'][:5000]}{'...' if len(result['content']) > 1500 else ''}\n"
 
-            user_message = f"Please enhance this prompt: {content}{context}"
+            if context:
+                user_message = f"User query: {content}\n\nRelevant file content:{context}\n\nPlease analyze the code and provide a direct answer to the user's query using the provided context."
+            else:
+                user_message = f"Please enhance this prompt: {content}"
 
         except Exception as e:
-            # Fallback to original behavior if embeddings not available
             print(f"Note: Could not access embeddings database: {str(e)}")
             user_message = f"Please enhance this prompt: {content}"
 

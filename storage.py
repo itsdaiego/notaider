@@ -57,13 +57,14 @@ class Storage():
 
         for file in os.listdir(self.app_dir):
             file_path = os.path.join(self.app_dir, file)
-            with open(file_path, 'r') as f:
-                text = f.read().strip()
+            if file.endswith('.py'):
+                with open(file_path, 'r') as f:
+                    text = f.read().strip()
 
-                if text:
-                    texts.append(text)
-                    # TODO: check if the file is already in the index
-                    filenames.append(file)
+                    if text:
+                        texts.append(text)
+                        # TODO: check if the file is already in the index
+                        filenames.append(file)
 
         if not texts:
             print("No files with content found to process.")
@@ -99,13 +100,13 @@ class Storage():
 
         # converts distance to similarities 
         # for example:
-            # distance = 4 -> 1 / (1 + 4) = 0.2
+        # distance = 4 -> 1 / (1 + 4) = 0.2
         # 0.2 is the similarity score, the higher the distance, the lower will the similarity score be.
         similarities = 1 / (1 + distances[0])
 
         # zip is used to combine the most similar indices with their matching similarity scores
         # this creates a structure like:
-            # indices = [0, 1, 2]
+        # indices = [0, 1, 2]
         # similarities = [0.8, 0.6, 0.5]
         # results = [(0, 0.8), (1, 0.6), (2, 0.5)]
         for idx, similarity in zip(indices[0], similarities):
@@ -115,6 +116,12 @@ class Storage():
             try:
                 with open(file_path, 'r') as f:
                     content = f.read().strip()
+
+                    # increase similarity if filename is mentioned in query
+                    # TODO: perform grep or regex search for more robust matching
+                    if filename.replace('.py', '').lower() in query.lower():
+                        similarity = min(similarity + 0.3, 1.0)  # Cap at 1.0
+
                     results.append({
                         'filename': filename,
                         'content': content,
@@ -124,4 +131,5 @@ class Storage():
                 print(f"Warning: File {filename} not found in {self.app_dir}")
                 continue
 
+        results.sort(key=lambda x: x['similarity'], reverse=True)
         return results
