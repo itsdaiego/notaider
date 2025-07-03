@@ -1,4 +1,5 @@
 import os
+import re
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -116,10 +117,9 @@ class Storage():
                 with open(file_path, 'r') as f:
                     content = f.read().strip()
 
-                    # increase similarity if filename is mentioned in query
-                    # TODO: perform grep or regex search for more robust matching
-                    if filename.replace('.py', '').lower() in query.lower():
-                        similarity = min(similarity + 0.3, 1.0)  # Cap at 1.0
+                    # increase similarity if filename is mentioned in initial query
+                    similarity_boost = self._perform_similarity_boost(filename, query)
+                    similarity = min(similarity + similarity_boost, 1.0)  # Cap at 1.0
 
                     results.append({
                         'filename': filename,
@@ -132,3 +132,20 @@ class Storage():
 
         results.sort(key=lambda x: x['similarity'], reverse=True)
         return results
+
+    def _perform_similarity_boost(self, filename, query):
+        boost = 0.0
+        base_filename = filename.replace('.py', '')
+        query_lower = query.lower()
+
+        # exact match
+        if base_filename.lower() in query_lower:
+            boost = max(boost, 0.3)
+
+
+        # split filename into words and check if any word matches query
+        normalized_filename = re.sub(r'[_-]', ' ', base_filename.lower())
+        if normalized_filename in query_lower:
+            boost = max(boost, 0.25)
+
+        return boost
