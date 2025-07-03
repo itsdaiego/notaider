@@ -25,7 +25,7 @@ class Storage():
     def clean_embeddings(self):
         """Clean/reset the FAISS index and filenames - like a database reset."""
         files_to_remove = ['index.faiss', 'filenames.npy']
-        
+
         for file in files_to_remove:
             file_path = os.path.join(self.storage_dir, file)
             if os.path.exists(file_path):
@@ -61,9 +61,8 @@ class Storage():
                 with open(file_path, 'r') as f:
                     text = f.read().strip()
 
-                    if text:
+                    if text and file not in existing_filenames:
                         texts.append(text)
-                        # TODO: check if the file is already in the index
                         filenames.append(file)
 
         if not texts:
@@ -98,7 +97,7 @@ class Storage():
 
         results = []
 
-        # converts distance to similarities 
+        # converts distance to similarities
         # for example:
         # distance = 4 -> 1 / (1 + 4) = 0.2
         # 0.2 is the similarity score, the higher the distance, the lower will the similarity score be.
