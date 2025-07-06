@@ -3,28 +3,28 @@ import re
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from pathlib import Path
+import ast
+from typing import List, Dict, Any
 
 
 class Storage():
     def __init__(self, storage_dir='db', app_dir='app'):
         self.storage_dir = storage_dir
         self.app_dir = app_dir
-        self._model = None  # Lazy loading
+        self._model = None
 
     @property
     def model(self):
-        """Lazy load the model when first accessed"""
         if self._model is None:
             self._model = SentenceTransformer('all-MiniLM-L6-v2')
         return self._model
 
     def ensure_storage_dir(self):
-        """Ensure the storage directory exists."""
         if not os.path.exists(self.storage_dir):
             os.makedirs(self.storage_dir)
 
     def clean_embeddings(self):
-        """Clean/reset the FAISS index and filenames - like a database reset."""
         files_to_remove = ['index.faiss', 'filenames.npy']
 
         for file in files_to_remove:
@@ -35,8 +35,7 @@ class Storage():
 
         print("Database reset complete!")
 
-    def store_files(self):
-        """Store files in the storage directory."""
+    def store_files(self, match: str = ""):
         if not os.path.exists(os.path.join(self.storage_dir)):
             os.makedirs(self.storage_dir)
 
@@ -56,19 +55,15 @@ class Storage():
         texts = []
         filenames = []
 
-        for file in os.listdir(self.app_dir):
-            file_path = os.path.join(self.app_dir, file)
-            if file.endswith('.py'):
-                with open(file_path, 'r') as f:
-                    text = f.read().strip()
-
-                    if text and file not in existing_filenames:
-                        texts.append(text)
-                        filenames.append(file)
+        for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
+            if path.is_file() and path.name.endswith('.py'):
+                if path.name not in existing_filenames:
+                    with open(path, 'r', encoding='utf-8') as file:
+                        texts.append(file.read())
+                        filenames.append(path.name)
 
         if not texts:
-            print("No files with content found to process.")
-            return existing_filenames
+            return existing_filenames, []
 
         embeddings = self.model.encode(texts, convert_to_numpy=True)
 
@@ -82,9 +77,9 @@ class Storage():
         all_filenames = existing_filenames + filenames
 
         faiss.write_index(index, index_path)
-        np.save(filenames_path, np.array(all_filenames))
+        np.save(filenames_path, all_filenames)
 
-        return all_filenames
+        return all_filenames, filenames
 
     def search_content(self, query, top_k=5):
         index_path = os.path.join(self.storage_dir, 'index.faiss')
@@ -130,7 +125,7 @@ class Storage():
                 print(f"Warning: File {filename} not found in {self.app_dir}")
                 continue
 
-        results.sort(key=lambda x: x['similarity'], reverse=True)
+        results.sort(key=lambda item: item['similarity'], reverse=True)
         return results
 
     def _perform_similarity_boost(self, filename, query):
@@ -138,14 +133,162 @@ class Storage():
         base_filename = filename.replace('.py', '')
         query_lower = query.lower()
 
-        # exact match
         if base_filename.lower() in query_lower:
             boost = max(boost, 0.3)
 
-
-        # split filename into words and check if any word matches query
         normalized_filename = re.sub(r'[_-]', ' ', base_filename.lower())
         if normalized_filename in query_lower:
             boost = max(boost, 0.25)
 
         return boost
+
+    def store_code_chunks(self, match: str = ""):
+        if not os.path.exists(self.storage_dir):
+            os.makedirs(self.storage_dir)
+
+        if not os.path.exists(self.app_dir):
+            os.makedirs(self.app_dir)
+
+        chunks_index_path = os.path.join(self.storage_dir, 'chunks_index.faiss')
+        chunks_metadata_path = os.path.join(self.storage_dir, 'chunks_metadata.npy')
+
+        if os.path.exists(chunks_index_path) and os.path.exists(chunks_metadata_path):
+            chunks_index = faiss.read_index(chunks_index_path)
+            existing_metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
+        else:
+            chunks_index = None
+            existing_metadata = []
+
+        chunks_data = []
+        new_chunks = []
+
+        for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
+            if path.is_file() and path.name.endswith('.py'):
+                with open(path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+
+                    chunks = self._parse_code_chunks(content, str(path))
+
+                    for chunk in chunks:
+                        chunk_id = f"{path.name}:{chunk['type']}:{chunk['name']}"
+
+                        if not any(meta['chunk_id'] == chunk_id for meta in existing_metadata):
+                            chunks_data.append(chunk['code'])
+                            new_chunks.append({
+                                'chunk_id': chunk_id,
+                                'filename': path.name,
+                                'type': chunk['type'],
+                                'name': chunk['name'],
+                                'lineno': chunk['lineno'],
+                                'end_lineno': chunk['end_lineno'],
+                                'code': chunk['code']
+                            })
+
+        if not chunks_data:
+            return existing_metadata, []
+
+        embeddings = self.model.encode(chunks_data, convert_to_numpy=True)
+        dim = embeddings.shape[1]
+
+        if chunks_index is None:
+            chunks_index = faiss.IndexFlatL2(dim)
+
+        chunks_index.add(embeddings)
+
+        all_metadata = existing_metadata + new_chunks
+
+        faiss.write_index(chunks_index, chunks_index_path)
+        np.save(chunks_metadata_path, all_metadata)
+
+        return all_metadata, new_chunks
+
+    def _parse_code_chunks(self, code: str, filepath: str) -> List[Dict[str, Any]]:
+        try:
+            tree = ast.parse(code)
+            chunks = []
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    chunk = {
+                        'type': 'function',
+                        'name': node.name,
+                        'lineno': node.lineno,
+                        'end_lineno': getattr(node, 'end_lineno', node.lineno),
+                        'code': ast.get_source_segment(code, node) or self._extract_code_segment(code, node.lineno, getattr(node, 'end_lineno', node.lineno + 10)),
+                        'filepath': filepath
+                    }
+                    chunks.append(chunk)
+                elif isinstance(node, ast.ClassDef):
+                    chunk = {
+                        'type': 'class',
+                        'name': node.name,
+                        'lineno': node.lineno,
+                        'end_lineno': getattr(node, 'end_lineno', node.lineno),
+                        'code': ast.get_source_segment(code, node) or self._extract_code_segment(code, node.lineno, getattr(node, 'end_lineno', node.lineno + 20)),
+                        'filepath': filepath
+                    }
+                    chunks.append(chunk)
+
+            return chunks
+        except SyntaxError as e:
+            print(f"Syntax error in {filepath}: {e}")
+            return []
+
+    def _extract_code_segment(self, code: str, start_line: int, end_line: int) -> str:
+        lines = code.split('\n')
+        return '\n'.join(lines[start_line-1:end_line])
+
+    def search_code_chunks(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        chunks_index_path = os.path.join(self.storage_dir, 'chunks_index.faiss')
+        chunks_metadata_path = os.path.join(self.storage_dir, 'chunks_metadata.npy')
+
+        if not os.path.exists(chunks_index_path) or not os.path.exists(chunks_metadata_path):
+            return []
+
+        chunks_index = faiss.read_index(chunks_index_path)
+        metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
+
+        query_embedding = self.model.encode([query], convert_to_numpy=True)
+        distances, indices = chunks_index.search(query_embedding, top_k)
+
+        results = []
+        similarities = 1 / (1 + distances[0])
+
+        for idx, similarity in zip(indices[0], similarities):
+            if idx < len(metadata):
+                chunk_meta = metadata[idx]
+
+                boost = 0.0
+                if chunk_meta['name'].lower() in query.lower():
+                    boost = 0.3
+
+                similarity = min(similarity + boost, 1.0)
+
+                results.append({
+                    'chunk_id': chunk_meta['chunk_id'],
+                    'filename': chunk_meta['filename'],
+                    'type': chunk_meta['type'],
+                    'name': chunk_meta['name'],
+                    'lineno': chunk_meta['lineno'],
+                    'end_lineno': chunk_meta['end_lineno'],
+                    'code': chunk_meta['code'],
+                    'similarity': similarity
+                })
+
+        results.sort(key=lambda item: item['similarity'], reverse=True)
+        return results
+
+    def find_functions_by_name(self, function_name: str) -> List[Dict[str, Any]]:
+        chunks_metadata_path = os.path.join(self.storage_dir, 'chunks_metadata.npy')
+
+        if not os.path.exists(chunks_metadata_path):
+            return []
+
+        metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
+
+        matching_functions = []
+        for chunk_meta in metadata:
+            if chunk_meta['type'] == 'function' and chunk_meta['name'] == function_name:
+                matching_functions.append(chunk_meta)
+
+        return matching_functions
