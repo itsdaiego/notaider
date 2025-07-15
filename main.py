@@ -122,38 +122,6 @@ Guidelines:
         except Exception as e:
             return f"Error processing request: {str(e)}"
 
-    def get_function_signatures(self, filename: Optional[str] = None) -> str:
-        try:
-            chunks_metadata_path = os.path.join(self.storage.storage_dir, 'chunks_metadata.npy')
-
-            if not os.path.exists(chunks_metadata_path):
-                return "No code chunks found. Run /chunks first."
-
-            metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
-
-            if filename:
-                metadata = [chunk for chunk in metadata if chunk['filename'] == filename]
-
-            functions = [chunk for chunk in metadata if chunk['type'] == 'function']
-            classes = [chunk for chunk in metadata if chunk['type'] == 'class']
-
-            result = f"{GREEN}Code Structure:\n"
-
-            if functions:
-                result += f"\n{GREEN}Functions:\n"
-                for func in functions:
-                    result += f"{GREEN}  - {func['name']} (line {func['lineno']}) in {func['filename']}\n"
-
-            if classes:
-                result += f"\n{GREEN}Classes:\n"
-                for cls in classes:
-                    result += f"{GREEN}  - {cls['name']} (line {cls['lineno']}) in {cls['filename']}\n"
-
-            return result
-
-        except Exception as e:
-            return f"Error getting function signatures: {str(e)}"
-
 
 async def main():
     session = PromptSession()
@@ -163,7 +131,6 @@ async def main():
     print(f"{GREEN}  /ask <prompt>          - Enhance and process prompt")
     print(f"{GREEN}  /add <pattern>         - Add files to vector database")
     print(f"{GREEN}  /code <request>        - AI-powered code modification with preview")
-    print(f"{GREEN}  /functions [filename]  - Show function signatures")
     print(f"{GREEN}Type 'exit' or press Ctrl+D to quit.")
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -250,25 +217,10 @@ async def main():
                         model=notaider.model,
                         client=notaider.client
                     )
-                    result = await code_workflow.code_workflow(content)
+                    result = await code_workflow.perform_diff(content)
                     print(result)
                 except Exception as e:
                     print(f"{GREEN}Error in code workflow: {str(e)}")
-
-            elif command.startswith('/functions'):
-                parts = command.split()
-                filename = parts[1] if len(parts) > 1 else None
-
-                if not api_key:
-                    print(f"{GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
-                    continue
-
-                try:
-                    notaider = NotAider(api_key)
-                    result = notaider.get_function_signatures(filename)
-                    print(result)
-                except Exception as e:
-                    print(f"{GREEN}Error getting functions: {str(e)}")
 
             else:
                 print(f"{GREEN}your command is invalid: {command}")
@@ -276,7 +228,6 @@ async def main():
                 print(f"{GREEN}  /ask <prompt>          - Enhance and process prompt")
                 print(f"{GREEN}  /add <pattern>         - Add files to vector database")
                 print(f"{GREEN}  /code <request>        - AI-powered code modification with preview")
-                print(f"{GREEN}  /functions [filename]  - Show function signatures")
                 print(f"{GREEN}  exit/quit              - Exit the program")
 
         except (KeyboardInterrupt, EOFError):

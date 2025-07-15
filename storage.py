@@ -214,7 +214,7 @@ class Storage():
                         'name': node.name,
                         'lineno': node.lineno,
                         'end_lineno': getattr(node, 'end_lineno', node.lineno),
-                        'code': ast.get_source_segment(code, node) or self._extract_code_segment(code, node.lineno, getattr(node, 'end_lineno', node.lineno + 10)),
+                        'code': self._extract_code_segment(code, node.lineno, getattr(node, 'end_lineno', node.lineno)),
                         'filepath': filepath
                     }
                     chunks.append(chunk)
@@ -224,7 +224,7 @@ class Storage():
                         'name': node.name,
                         'lineno': node.lineno,
                         'end_lineno': getattr(node, 'end_lineno', node.lineno),
-                        'code': ast.get_source_segment(code, node) or self._extract_code_segment(code, node.lineno, getattr(node, 'end_lineno', node.lineno + 20)),
+                        'code': self._extract_code_segment(code, node.lineno, getattr(node, 'end_lineno', node.lineno)),
                         'filepath': filepath
                     }
                     chunks.append(chunk)
