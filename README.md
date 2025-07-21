@@ -2,7 +2,7 @@
 
 aider... but actually not.
 
-https://github.com/user-attachments/assets/848c98fd-6545-4094-a273-503ff1b7ef76
+https://github.com/user-attachments/assets/8868df15-386e-4bc8-a4d3-1651e0057fbc
 
 ## Installation
 
@@ -22,3 +22,5 @@ pip install -e .
 ```bash
 export ANTHROPIC_API_KEY="your-api-key-here"
 ```
+
+
