@@ -3,14 +3,31 @@
 from prompt_toolkit import PromptSession
 import asyncio
 from code_workflow import CodeWorkflow
+from colors import Colors
 from storage import Storage
 from anthropic import Anthropic
 
 import os
 from typing import Optional
-import numpy as np
 
-GREEN = '\033[92m'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+def _print_logo():
+    """Print a beautiful NOTAIDER ASCII logo with green theme and gradient effects"""
+
+    # Create a stunning gradient effect logo
+    logo = f"""
+
+    {Colors.LOGO_GREEN}{Colors.BOLD}
+        ███╗   ██╗ ██████╗ ████████╗ █████╗ ██╗██████╗ ███████╗██████╗
+        ████╗  ██║██╔═══██╗╚══██╔══╝██╔══██╗██║██╔══██╗██╔════╝██╔══██╗
+    {Colors.NEON_GREEN}    ██╔██╗ ██║██║   ██║   ██║   ███████║██║██║  ██║█████╗  ██████╔╝
+    {Colors.ACCENT_GREEN}    ██║╚██╗██║██║   ██║   ██║   ██╔══██║██║██║  ██║██╔══╝  ██╔══██╗
+    {Colors.EMERALD_GREEN}    ██║ ╚████║╚██████╔╝   ██║   ██║  ██║██║██████╔╝███████╗██║  ██║
+        ╚═╝  ╚═══╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝
+    """
+    print(logo)
+
 
 class NotAider:
     def __init__(self, api_key: str):
@@ -24,11 +41,11 @@ class NotAider:
         try:
             chunks_index_path = os.path.join(self.storage.storage_dir, 'chunks_index.faiss')
             if not os.path.exists(chunks_index_path):
-                print(f"{GREEN}Initializing code chunks database...")
+                print(f"{Colors.GREEN}Initializing code chunks database...")
                 self.storage.store_code_chunks()
-                print(f"{GREEN}Code chunks ready!")
+                print(f"{Colors.GREEN}Code chunks ready!")
         except Exception as e:
-            print(f"{GREEN}Note: Could not initialize chunks database: {e}")
+            print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
 
     async def enhance_prompt(self, content: str) -> str:
         system_prompt = """You are an AI assistant that analyzes code and provides direct answers based on the provided file context.
@@ -126,12 +143,13 @@ Guidelines:
 async def main():
     session = PromptSession()
 
-    print(f"{GREEN}Welcome to NotAider CLI with Dynamic Code Workflow!")
-    print(f"{GREEN}Commands:")
-    print(f"{GREEN}  /ask <prompt>          - Enhance and process prompt")
-    print(f"{GREEN}  /add <pattern>         - Add files to vector database")
-    print(f"{GREEN}  /code <request>        - AI-powered code modification with preview")
-    print(f"{GREEN}Type 'exit' or press Ctrl+D to quit.")
+    _print_logo()
+    print()
+    print(f"{Colors.GREEN}Commands:")
+    print(f"{Colors.GREEN}  /ask <prompt>          - Enhance and process prompt")
+    print(f"{Colors.GREEN}  /add <pattern>         - Add files to vector database")
+    print(f"{Colors.GREEN}  /code <request>        - AI-powered code modification with preview")
+    print(f"{Colors.GREEN}Type 'exit' or press Ctrl+D to quit.")
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
 
@@ -150,41 +168,41 @@ async def main():
             if command.startswith('/ask '):
                 content = command[5:].strip()
                 if not content:
-                    print(f"{GREEN}Usage: /ask <your prompt>")
+                    print(f"{Colors.GREEN}Usage: /ask <your prompt>")
                     continue
 
                 if not api_key:
-                    print(f"{GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
-                    print(f"{GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
+                    print(f"{Colors.GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
+                    print(f"{Colors.GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
                     continue
 
-                print(f"{GREEN}{'='*29}")
-                print(f"{GREEN}Enhancing your prompt...")
-                print(f"{GREEN}{'='*29}")
+                print(f"{Colors.GREEN}{'='*29}")
+                print(f"{Colors.GREEN}Enhancing your prompt...")
+                print(f"{Colors.GREEN}{'='*29}")
 
                 try:
                     notaider = NotAider(api_key)
                     enhanced = await notaider.enhance_prompt(content)
-                    print(f"{GREEN}{'='*29}")
-                    print(f"{GREEN}Enhanced Prompt:")
-                    print(f"{GREEN}{'='*29}")
-                    print(f"{GREEN}{enhanced}")
-                    print(f"{GREEN}{'='*29}")
-                    print(f"{GREEN}Generating Final Response:")
-                    print(f"{GREEN}{'='*29}")
+                    print(f"{Colors.GREEN}{'='*29}")
+                    print(f"{Colors.GREEN}Enhanced Prompt:")
+                    print(f"{Colors.GREEN}{'='*29}")
+                    print(f"{Colors.GREEN}{enhanced}")
+                    print(f"{Colors.GREEN}{'='*29}")
+                    print(f"{Colors.GREEN}Generating Final Response:")
+                    print(f"{Colors.GREEN}{'='*29}")
                     if enhanced.startswith("Error"):
-                        print(f"{GREEN}{enhanced}")
+                        print(f"{Colors.GREEN}{enhanced}")
                         continue
 
                     output = await notaider.process_request(enhanced)
 
                     if output and output.startswith("Error"):
-                        print(f"{GREEN}{output}")
+                        print(f"{Colors.GREEN}{output}")
                     else:
-                        print(f"{GREEN}{output}")
+                        print(f"{Colors.GREEN}{output}")
 
                 except Exception as e:
-                    print(f"{GREEN}Error initializing NotAider: {str(e)}")
+                    print(f"{Colors.GREEN}Error initializing NotAider: {str(e)}")
 
             elif command.startswith('/add'):
                 content = str(command[5:].strip())
@@ -192,22 +210,22 @@ async def main():
                 filenames, new_files = storage.store_files(content)
 
                 if not new_files:
-                    print(f"{GREEN}No files added.")
+                    print(f"{Colors.GREEN}No files added.")
                 else:
-                    print(f"{GREEN}Files added:")
+                    print(f"{Colors.GREEN}Files added:")
                     for file in filenames:
-                        print(f"{GREEN}{file}")
+                        print(f"{Colors.GREEN}{file}")
 
             elif command.startswith('/code '):
                 content = command[6:].strip()
                 if not content:
-                    print(f"{GREEN}Usage: /code <your code>")
-                    print(f"{GREEN}Example: /code Add None checks to the add_todo function")
+                    print(f"{Colors.GREEN}Usage: /code <your code>")
+                    print(f"{Colors.GREEN}Example: /code Add None checks to the add_todo function")
                     continue
 
                 if not api_key:
-                    print(f"{GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
-                    print(f"{GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
+                    print(f"{Colors.GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
+                    print(f"{Colors.GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
                     continue
 
                 try:
@@ -220,18 +238,18 @@ async def main():
                     result = await code_workflow.perform_diff(content)
                     print(result)
                 except Exception as e:
-                    print(f"{GREEN}Error in code workflow: {str(e)}")
+                    print(f"{Colors.GREEN}Error in code workflow: {str(e)}")
 
             else:
-                print(f"{GREEN}your command is invalid: {command}")
-                print(f"{GREEN}Possible commands:")
-                print(f"{GREEN}  /ask <prompt>          - Enhance and process prompt")
-                print(f"{GREEN}  /add <pattern>         - Add files to vector database")
-                print(f"{GREEN}  /code <request>        - AI-powered code modification with preview")
-                print(f"{GREEN}  exit/quit              - Exit the program")
+                print(f"{Colors.GREEN}your command is invalid: {command}")
+                print(f"{Colors.GREEN}Possible commands:")
+                print(f"{Colors.GREEN}  /ask <prompt>          - Enhance and process prompt")
+                print(f"{Colors.GREEN}  /add <pattern>         - Add files to vector database")
+                print(f"{Colors.GREEN}  /code <request>        - AI-powered code modification with preview")
+                print(f"{Colors.GREEN}  exit/quit              - Exit the program")
 
         except (KeyboardInterrupt, EOFError):
-            print(f"{GREEN}Bye!")
+            print(f"{Colors.GREEN}Bye!")
             break
 
 
