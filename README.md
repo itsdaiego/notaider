@@ -2,7 +2,11 @@
 
 aider... but actually not.
 
-https://github.com/user-attachments/assets/8868df15-386e-4bc8-a4d3-1651e0057fbc
+
+
+https://github.com/user-attachments/assets/50b36cb8-0eec-4156-9bcd-45e3fd8a8137
+
+
 
 ## Installation
 
@@ -22,5 +26,15 @@ pip install -e .
 ```bash
 export ANTHROPIC_API_KEY="your-api-key-here"
 ```
+
+## Roadmap
+
+[ ] fix identation when applying patches
+
+[ ] create support for multiple changes in a single prompt
+
+[ ] create multi-file support
+
+[ ] add tools to the agent (i.e allow grep for not indexed files, create files/dirs etc...)
 
 
