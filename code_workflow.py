@@ -42,6 +42,11 @@ class CodeWorkflow:
 
             User request: {query}
 
+            CRITICAL: You MUST preserve the EXACT indentation from the original code above.
+            - The first line starts with exactly the same whitespace/indentation as shown
+            - All subsequent lines must maintain the same relative indentation structure
+            - Do NOT change the base indentation level of the code block
+
             Please provide the transformed code that implements the requested change.
             Return only the modified code without explanations.
             """
@@ -61,7 +66,8 @@ class CodeWorkflow:
                 updated_code = updated_code.split('```')[1]
             if updated_code.endswith('```'):
                 updated_code = updated_code.rsplit('```', 1)[0]
-            updated_code = updated_code
+            updated_code = updated_code.lstrip('\n')
+            updated_code = updated_code.rstrip('\n')
 
             print(f"{Colors.GREEN}📝 Generating diff preview...")
             diff = self._generate_diff(
@@ -127,8 +133,8 @@ class CodeWorkflow:
 
     def _generate_diff(self, original: str, modified: str, filename: str = "file.py") -> str:
         """Generate a unified diff between original and modified code"""
-        original_lines = original.splitlines(keepends=True)
-        modified_lines = modified.splitlines(keepends=True)
+        original_lines = original.splitlines()
+        modified_lines = modified.splitlines()
 
         diff = difflib.unified_diff(
             original_lines,
