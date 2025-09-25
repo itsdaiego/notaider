@@ -133,8 +133,8 @@ class CodeWorkflow:
 
     def _generate_diff(self, original: str, modified: str, filename: str = "file.py") -> str:
         """Generate a unified diff between original and modified code"""
-        original_lines = original.splitlines()
-        modified_lines = modified.splitlines()
+        original_lines = original.splitlines(keepends=True)
+        modified_lines = modified.splitlines(keepends=True)
 
         diff = difflib.unified_diff(
             original_lines,
