@@ -4,7 +4,7 @@ aider... but actually not.
 
 
 
-<img width="2535" height="2815" alt="image" src="https://github.com/user-attachments/assets/b0335fbc-83a0-4dcd-9766-fe3ec24be7f6" />
+https://github.com/user-attachments/assets/1fa9b96a-1692-4f8f-a902-5c0be222ee2f
 
 
 
