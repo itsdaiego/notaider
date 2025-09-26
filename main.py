@@ -6,6 +6,8 @@ from code_workflow import CodeWorkflow
 from colors import Colors
 from storage import Storage
 from anthropic import Anthropic
+from pydantic_ai import Agent
+import difflib
 
 import os
 from typing import Optional
@@ -31,7 +33,7 @@ def _print_logo():
 
 class NotAider:
     def __init__(self, api_key: str):
-        self.client = Anthropic(api_key=api_key)
+        self.client = Agent('claude-3-5-haiku-20241022')
         self.model = "claude-3-5-haiku-20241022"
 
         self.storage = Storage(storage_dir='db', app_dir='app')
@@ -84,23 +86,11 @@ Guidelines:
             user_message = f"Please enhance this prompt: {content}"
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1500,
-                system=system_prompt,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": user_message
-                    }
-                ]
-            )
-            if response.content and len(response.content) > 0:
-                content_block = response.content[0]
-                return getattr(content_block, 'text', str(content_block))
-            return "No content in response"
+            response = await self.client.run(user_message)
+            return str(response.data)
         except Exception as e:
             return f"Error enhancing prompt: {str(e)}"
+
 
     async def process_request(self, content: str) -> Optional[str]:
         system_prompt = """You are an AI assistant that is designed to answer questions about programming, technology, and general knowledge.
@@ -120,22 +110,8 @@ Guidelines:
 """
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1000,
-                system=system_prompt,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": content
-                    }
-                ]
-            )
-
-            if response.content and len(response.content) > 0:
-                content_block = response.content[0]
-                return getattr(content_block, 'text', str(content_block))
-            return "No content in response"
+            response = await self.client.run(content)
+            return str(response.data)
         except Exception as e:
             return f"Error processing request: {str(e)}"
 
@@ -219,9 +195,18 @@ async def main():
             elif command.startswith('/code '):
                 content = command[6:].strip()
                 if not content:
-                    print(f"{Colors.GREEN}Usage: /code <your code>")
+                    print(f"{Colors.GREEN}Usage: /code <your request>")
+                    print(f"{Colors.GREEN}       /code <filename> <your request>")
                     print(f"{Colors.GREEN}Example: /code Add None checks to the add_todo function")
+                    print(f"{Colors.GREEN}Example: /code main.py Add error handling to main function")
                     continue
+
+                # Check if first word is a filename
+                parts = content.split(' ', 1)
+                actual_request = content
+
+                if len(parts) > 1 and parts[0].endswith('.py'):
+                    actual_request = parts[1]
 
                 if not api_key:
                     print(f"{Colors.GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
@@ -235,7 +220,7 @@ async def main():
                         model=notaider.model,
                         client=notaider.client
                     )
-                    result = await code_workflow.perform_diff(content)
+                    result = await code_workflow.perform_diff(actual_request)
                     print(result)
                 except Exception as e:
                     print(f"{Colors.GREEN}Error in code workflow: {str(e)}")

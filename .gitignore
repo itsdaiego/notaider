@@ -2,6 +2,7 @@
 __pycache__/
 notaider*/
 venv/
+.venv/
 dist/
 db/
 app/

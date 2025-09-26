@@ -2,8 +2,15 @@ import os
 import numpy as np
 import difflib
 
+from pydantic import BaseModel, ValidationError
+from pydantic_ai import Agent
+
 from colors import Colors
 
+
+class CodeWorkflowOutput(BaseModel):
+    code: str
+    filename: str
 
 class CodeWorkflow:
     def __init__(self, storage, model, client):
@@ -11,7 +18,7 @@ class CodeWorkflow:
         self.model = model
         self.client = client
 
-    def _ensure_chunks_ready(self):
+    def _check_code_chunks(self):
         try:
             chunks_index_path = os.path.join(self.storage.storage_dir, 'chunks_index.faiss')
             if not os.path.exists(chunks_index_path):
@@ -21,24 +28,31 @@ class CodeWorkflow:
         except Exception as e:
             print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
 
-    async def perform_diff(self, query: str) -> str:
+    async def perform_diff(self, query: str, target_filename: str | None = None) -> str:
         try:
-            self._ensure_chunks_ready()
+            self._check_code_chunks()
 
             print(f"{Colors.GREEN}🔍 Processing query...")
-            code_chunks = self.storage.search_code_chunks(query, top_k=5)
+
+            if not target_filename:
+                target_filename = self._infer_filename_from_query(query)
+
+            code_chunks = self.storage.search_code_chunks(query, top_k=3)
 
             if not code_chunks:
-                return "Nohing found. Please try a different query."
+                return "Nothing found. Please try a different query."
 
+            print(f"{Colors.GREEN}📝 Selected {len(code_chunks)} chunk(s) for modification:")
             for i, chunk in enumerate(code_chunks, 1):
                 print(f"{Colors.GREEN}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} (similarity: {chunk['similarity']:.3f})")
 
-            best_chunk = code_chunks[0]
-            transformation_prompt = f"""
-            Here is a {best_chunk['type']} from {best_chunk['filename']}:
+            # Process all selected chunks
+            changes = []
 
-            {best_chunk['code']}
+            transformation_prompt = f"""
+            Here are the relevant chunks for context:
+                {', '.join([f"chunk type: {c['type']} ' chunk code: {c['code']}' from filename {c['filename']}" for c in code_chunks])}
+
 
             User request: {query}
 
@@ -51,85 +65,65 @@ class CodeWorkflow:
             Return only the modified code without explanations.
             """
 
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1000,
-                messages=[{"role": "user", "content": transformation_prompt}]
-            )
+            # Create a temporary agent with structured output for this specific 
+            structured_agent = Agent('claude-3-5-haiku-20241022', output_type=list[CodeWorkflowOutput], retries=5)
+            try:
+                response = await structured_agent.run(transformation_prompt)
+            except ValidationError as ve:
+                return f"Error in AI response validation: {ve}"
+            except Exception as e:
+                return f"Error in AI response: {e}"
 
-            updated_code = response.content[0].text
+            updated_code = str(response.output[0].code) if response.output else ""
 
             # remove md code blocks if present
-            if updated_code.startswith('```python'):
-                updated_code = updated_code.split('```python')[1]
-            if updated_code.startswith('```'):
-                updated_code = updated_code.split('```')[1]
-            if updated_code.endswith('```'):
-                updated_code = updated_code.rsplit('```', 1)[0]
-            updated_code = updated_code.lstrip('\n')
-            updated_code = updated_code.rstrip('\n')
+            updated_code = self._clean_code_response(updated_code)
 
+            for chunk in code_chunks:
+                changes.append({
+                    'chunk': chunk,
+                    'updated_code': updated_code
+                })
+
+            # Generate combined diff
             print(f"{Colors.GREEN}📝 Generating diff preview...")
-            diff = self._generate_diff(
-                best_chunk['code'],
-                updated_code,
-                best_chunk['filename']
-            )
 
             print(f"{Colors.GREEN}{'='*50}")
             print(f"{Colors.GREEN}PROPOSED CHANGES")
             print(f"{Colors.GREEN}{'='*50}")
-            print(f"{Colors.GREEN}File: {best_chunk['filename']}")
-            print(f"{Colors.GREEN}Target: {best_chunk['type']} '{best_chunk['name']}' (lines {best_chunk['lineno']}-{best_chunk['end_lineno']})")
+
+            total_diff = ""
+            target_files = set()
+
+            for change in changes:
+                chunk = change['chunk']
+                updated_code = change['updated_code']
+                target_files.add(chunk['filename'])
+
+                diff = self._generate_diff(
+                    chunk['code'],
+                    updated_code,
+                    chunk['filename']
+                )
+
+                print(f"{Colors.GREEN}File: {chunk['filename']}")
+                print(f"{Colors.GREEN}Target: {chunk['type']} '{chunk['name']}' (lines {chunk['lineno']}-{chunk['end_lineno']})")
+                print(f"{Colors.GREEN}Diff:")
+                print(diff)
+                print(f"{Colors.GREEN}{'-'*30}")
+
+                total_diff += f"\n{chunk['filename']} - {chunk['type']} '{chunk['name']}':\n{diff}\n"
+
             print(f"{Colors.GREEN}{'='*50}")
-            print(f"{Colors.GREEN}Diff:")
-            print(diff)
+            print(f"{Colors.GREEN}Files to be modified: {', '.join(target_files)}")
             print(f"{Colors.GREEN}{'='*50}")
 
-            try:
-                permission = input("Apply these changes? (y/n): ").strip().lower()
-
-                if permission == 'y' or permission == 'yes':
-                    result = self._apply_code_changes(best_chunk, updated_code, diff)
-                    return result
-                else:
-                    return f"{Colors.GREEN}Changes cancelled by user."
-            except KeyboardInterrupt:
-                return f"{Colors.GREEN}Changes cancelled by user."
+            result = self._apply_multiple_changes(changes)
+            return result
 
         except Exception as e:
             return f"Error in code workflow: {str(e)}"
 
-    def _apply_code_changes(self, chunk: dict, updated_code: str, diff: str) -> str:
-        try:
-            file_path = os.path.join(self.storage.app_dir, chunk['filename'])
-            with open(file_path, 'r') as f:
-                full_content = f.read()
-
-            lines = full_content.split('\n')
-            start_line = chunk['lineno'] - 1
-            end_line = chunk['end_lineno']
-
-            new_lines = lines[:start_line] + updated_code.split('\n') + lines[end_line:]
-            new_content = '\n'.join(new_lines)
-
-            with open(file_path, 'w') as f:
-                f.write(new_content)
-
-            self.storage.store_code_chunks()
-
-            return f"""
-            {Colors.GREEN}✅ Changes applied successfully!
-
-{Colors.GREEN}File: {chunk['filename']}
-{Colors.GREEN}Modified: {chunk['type']} '{chunk['name']}'
-
-{Colors.GREEN}Summary:
-{diff}
-"""
-
-        except Exception as e:
-            return f"Error applying changes: {str(e)}"
 
     def _generate_diff(self, original: str, modified: str, filename: str = "file.py") -> str:
         """Generate a unified diff between original and modified code"""
@@ -177,3 +171,89 @@ class CodeWorkflow:
 
         except Exception as e:
             return f"Error getting function signatures: {str(e)}"
+
+    def _infer_filename_from_query(self, query: str) -> str:
+        """Infer target filename from the query text"""
+        import re
+
+        # Look for explicit filename mentions
+        filename_patterns = [
+            r'in\s+(\w+\.py)',  # "in main.py"
+            r'(\w+\.py)',       # "main.py"
+            r'(\w+)\s+file',    # "main file"
+            r'(\w+)\s+module',  # "storage module"
+        ]
+
+        for pattern in filename_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                filename = match.group(1)
+                if not filename.endswith('.py'):
+                    filename += '.py'
+                return filename
+
+        return None
+
+    def _clean_code_response(self, code: str) -> str:
+        """Clean AI response to extract just the code"""
+        if code.startswith('```python'):
+            code = code.split('```python')[1]
+        if code.startswith('```'):
+            code = code.split('```')[1]
+        if code.endswith('```'):
+            code = code.rsplit('```', 1)[0]
+        code = code.lstrip('\n')
+        code = code.rstrip('\n')
+        return code
+
+    def _apply_multiple_changes(self, changes: list) -> str:
+        """Apply multiple changes to files"""
+        try:
+            changes_by_file = {}
+            for change in changes:
+                filename = change['chunk']['filename']
+                if filename not in changes_by_file:
+                    changes_by_file[filename] = []
+                changes_by_file[filename].append(change)
+
+            results = []
+
+            for filename, file_changes in changes_by_file.items():
+                file_changes.sort(key=lambda x: x['chunk']['lineno'], reverse=True)
+
+                file_path = os.path.join(self.storage.app_dir, filename)
+                with open(file_path, 'r') as f:
+                    full_content = f.read()
+
+                lines = full_content.split('\n')
+                modified_lines = lines.copy()
+
+                for change in file_changes:
+                    chunk = change['chunk']
+                    updated_code = change['updated_code']
+
+                    start_line = chunk['lineno'] - 1
+                    end_line = chunk['end_lineno']
+
+                    new_code_lines = updated_code.split('\n')
+                    modified_lines = modified_lines[:start_line] + new_code_lines + modified_lines[end_line:]
+
+                new_content = '\n'.join(modified_lines)
+                with open(file_path, 'w') as f:
+                    f.write(new_content)
+
+                results.append(f"✅ Modified {len(file_changes)} chunk(s) in {filename}")
+
+            self.storage.store_code_chunks()
+
+            summary = '\n'.join(results)
+            return f"""
+{Colors.GREEN}✅ All changes applied successfully!
+
+{Colors.GREEN}{summary}
+
+{Colors.GREEN}📁 Files modified: {', '.join(changes_by_file.keys())}
+"""
+
+        except Exception as e:
+            return f"Error applying multiple changes: {str(e)}"
