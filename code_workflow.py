@@ -28,14 +28,11 @@ class CodeWorkflow:
         except Exception as e:
             print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
 
-    async def perform_diff(self, query: str, target_filename: str | None = None) -> str:
+    async def perform_diff(self, query: str) -> str:
         try:
             self._check_code_chunks()
 
             print(f"{Colors.GREEN}🔍 Processing query...")
-
-            if not target_filename:
-                target_filename = self._infer_filename_from_query(query)
 
             code_chunks = self.storage.search_code_chunks(query, top_k=3)
 
@@ -63,6 +60,8 @@ class CodeWorkflow:
 
             Please provide the transformed code that implements the requested change.
             Return only the modified code without explanations.
+
+            NOTE: You do not need to change all chunks provided, you should infer which chunks need to be changed based on the user request.
             """
 
             # Create a temporary agent with structured output for this specific 
@@ -92,7 +91,6 @@ class CodeWorkflow:
             print(f"{Colors.GREEN}PROPOSED CHANGES")
             print(f"{Colors.GREEN}{'='*50}")
 
-            total_diff = ""
             target_files = set()
 
             for change in changes:
@@ -112,14 +110,14 @@ class CodeWorkflow:
                 print(diff)
                 print(f"{Colors.GREEN}{'-'*30}")
 
-                total_diff += f"\n{chunk['filename']} - {chunk['type']} '{chunk['name']}':\n{diff}\n"
+                if input("Apply this change? (y/n): ").strip().lower() != 'y':
+                    continue
 
-            print(f"{Colors.GREEN}{'='*50}")
-            print(f"{Colors.GREEN}Files to be modified: {', '.join(target_files)}")
-            print(f"{Colors.GREEN}{'='*50}")
+                print(f"{Colors.GREEN}{'='*50}")
+                print(f"{Colors.GREEN}Files to be modified: {', '.join(target_files)}")
+                print(f"{Colors.GREEN}{'='*50}")
 
-            result = self._apply_multiple_changes(changes)
-            return result
+                self._apply_change(change)
 
         except Exception as e:
             return f"Error in code workflow: {str(e)}"
@@ -206,54 +204,28 @@ class CodeWorkflow:
         code = code.rstrip('\n')
         return code
 
-    def _apply_multiple_changes(self, changes: list) -> str:
-        """Apply multiple changes to files"""
+    def _apply_change(self, change: dict) -> str:
+        """Apply a single change to a file"""
         try:
-            changes_by_file = {}
-            for change in changes:
-                filename = change['chunk']['filename']
-                if filename not in changes_by_file:
-                    changes_by_file[filename] = []
-                changes_by_file[filename].append(change)
+            chunk = change['chunk']
+            updated_code = change['updated_code']
 
-            results = []
+            file_path = os.path.join(self.storage.app_dir, chunk['filename'])
+            with open(file_path, 'r') as f:
+                full_content = f.read()
 
-            for filename, file_changes in changes_by_file.items():
-                file_changes.sort(key=lambda x: x['chunk']['lineno'], reverse=True)
+            lines = full_content.split('\n')
+            start_line = chunk['lineno'] - 1
+            end_line = chunk['end_lineno']
 
-                file_path = os.path.join(self.storage.app_dir, filename)
-                with open(file_path, 'r') as f:
-                    full_content = f.read()
+            new_code_lines = updated_code.split('\n')
+            modified_lines = lines[:start_line] + new_code_lines + lines[end_line:]
 
-                lines = full_content.split('\n')
-                modified_lines = lines.copy()
-
-                for change in file_changes:
-                    chunk = change['chunk']
-                    updated_code = change['updated_code']
-
-                    start_line = chunk['lineno'] - 1
-                    end_line = chunk['end_lineno']
-
-                    new_code_lines = updated_code.split('\n')
-                    modified_lines = modified_lines[:start_line] + new_code_lines + modified_lines[end_line:]
-
-                new_content = '\n'.join(modified_lines)
-                with open(file_path, 'w') as f:
-                    f.write(new_content)
-
-                results.append(f"✅ Modified {len(file_changes)} chunk(s) in {filename}")
+            new_content = '\n'.join(modified_lines)
+            with open(file_path, 'w') as f:
+                f.write(new_content)
 
             self.storage.store_code_chunks()
 
-            summary = '\n'.join(results)
-            return f"""
-{Colors.GREEN}✅ All changes applied successfully!
-
-{Colors.GREEN}{summary}
-
-{Colors.GREEN}📁 Files modified: {', '.join(changes_by_file.keys())}
-"""
-
         except Exception as e:
-            return f"Error applying multiple changes: {str(e)}"
+            return f"Error applying change: {str(e)}"

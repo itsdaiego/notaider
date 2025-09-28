@@ -12,6 +12,9 @@ import difflib
 import os
 from typing import Optional
 
+import debugpy
+debugpy.listen(("0.0.0.0", 5678))
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def _print_logo():
@@ -220,8 +223,7 @@ async def main():
                         model=notaider.model,
                         client=notaider.client
                     )
-                    result = await code_workflow.perform_diff(actual_request)
-                    print(result)
+                    await code_workflow.perform_diff(actual_request)
                 except Exception as e:
                     print(f"{Colors.GREEN}Error in code workflow: {str(e)}")
 
