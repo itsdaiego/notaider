@@ -6,6 +6,9 @@ from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import ast
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class Storage():
@@ -17,7 +20,8 @@ class Storage():
     @property
     def model(self):
         if self._model is None:
-            self._model = SentenceTransformer('all-MiniLM-L6-v2')
+            embedding_model = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+            self._model = SentenceTransformer(embedding_model)
         return self._model
 
     def ensure_storage_dir(self):
@@ -133,12 +137,15 @@ class Storage():
         base_filename = filename.replace('.py', '')
         query_lower = query.lower()
 
+        filename_boost_exact = float(os.getenv("FILENAME_BOOST_EXACT", "0.3"))
+        filename_boost_normalized = float(os.getenv("FILENAME_BOOST_NORMALIZED", "0.25"))
+
         if base_filename.lower() in query_lower:
-            boost = max(boost, 0.3)
+            boost = max(boost, filename_boost_exact)
 
         normalized_filename = re.sub(r'[_-]', ' ', base_filename.lower())
         if normalized_filename in query_lower:
-            boost = max(boost, 0.25)
+            boost = max(boost, filename_boost_normalized)
 
         return boost
 
@@ -259,8 +266,18 @@ class Storage():
                 chunk_meta = metadata[idx]
 
                 boost = 0.0
-                if chunk_meta['name'].lower() in query.lower():
-                    boost = 0.3
+                query_words = set(query.lower().split())
+                chunk_name_lower = chunk_meta['name'].lower()
+
+                chunk_name_boost_exact = float(os.getenv("CHUNK_NAME_BOOST_EXACT", "0.5"))
+                chunk_name_boost_partial = float(os.getenv("CHUNK_NAME_BOOST_PARTIAL", "0.3"))
+
+                # Strong boost for exact function name match
+                if chunk_name_lower in query_words:
+                    boost = chunk_name_boost_exact
+                # Partial boost if function name is substring of query
+                elif chunk_name_lower in query.lower():
+                    boost = chunk_name_boost_partial
 
                 similarity = min(similarity + boost, 1.0)
 

@@ -6,3 +6,4 @@ venv/
 dist/
 db/
 app/
+.env
