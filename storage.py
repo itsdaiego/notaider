@@ -255,8 +255,12 @@ class Storage():
         chunks_index = faiss.read_index(chunks_index_path)
         metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
 
+        # Search with a larger k to ensure we get the target function even if it has lower base similarity
+        # We'll boost the scores and then trim to top_k after scoring
+        search_k = min(max(top_k * 3, 15), len(metadata))
+
         query_embedding = self.model.encode([query], convert_to_numpy=True)
-        distances, indices = chunks_index.search(query_embedding, top_k)
+        distances, indices = chunks_index.search(query_embedding, search_k)
 
         results = []
         similarities = 1 / (1 + distances[0])
@@ -269,15 +273,24 @@ class Storage():
                 query_words = set(query.lower().split())
                 chunk_name_lower = chunk_meta['name'].lower()
 
-                chunk_name_boost_exact = float(os.getenv("CHUNK_NAME_BOOST_EXACT", "0.5"))
-                chunk_name_boost_partial = float(os.getenv("CHUNK_NAME_BOOST_PARTIAL", "0.3"))
+                chunk_name_boost_exact = float(os.getenv("CHUNK_NAME_BOOST_EXACT", "0.8"))
+                chunk_name_boost_partial = float(os.getenv("CHUNK_NAME_BOOST_PARTIAL", "0.4"))
 
-                # Strong boost for exact function name match
+                # Highest priority: exact function name match in query words
+                # Use exact equality to avoid substring matches (e.g., get_todo vs get_todo_file_path)
                 if chunk_name_lower in query_words:
                     boost = chunk_name_boost_exact
-                # Partial boost if function name is substring of query
+                # Partial boost only if function name is substring AND it's not a false positive
+                # We check that the match is either at word boundaries or complete
                 elif chunk_name_lower in query.lower():
-                    boost = chunk_name_boost_partial
+                    # Only apply partial boost if it's not a subset of another word in query_words
+                    # e.g., don't boost "get_todo_file_path" if "get_todo" was specifically mentioned
+                    is_false_positive = any(
+                        word != chunk_name_lower and word in chunk_name_lower
+                        for word in query_words
+                    )
+                    if not is_false_positive:
+                        boost = chunk_name_boost_partial
 
                 similarity = min(similarity + boost, 1.0)
 
@@ -293,7 +306,8 @@ class Storage():
                 })
 
         results.sort(key=lambda item: item['similarity'], reverse=True)
-        return results
+        # Return only the top_k results after applying boosts and sorting
+        return results[:top_k]
 
     def find_functions_by_name(self, function_name: str) -> List[Dict[str, Any]]:
         chunks_metadata_path = os.path.join(self.storage_dir, 'chunks_metadata.npy')
