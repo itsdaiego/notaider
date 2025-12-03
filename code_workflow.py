@@ -1,10 +1,10 @@
-import os
-import numpy as np
 import difflib
+import os
 
+import numpy as np
+from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
 from pydantic_ai import Agent
-from dotenv import load_dotenv
 
 from colors import Colors
 from scope_analyzer import ScopeAnalyzer
@@ -17,6 +17,7 @@ class CodeWorkflowOutput(BaseModel):
     filename: str
     chunk_name: str
 
+
 class CodeWorkflow:
     def __init__(self, storage, model, client):
         self.storage = storage
@@ -26,7 +27,7 @@ class CodeWorkflow:
 
     def _check_code_chunks(self):
         try:
-            chunks_index_path = os.path.join(self.storage.storage_dir, 'chunks_index.faiss')
+            chunks_index_path = os.path.join(self.storage.storage_dir, "chunks_index.faiss")
             if not os.path.exists(chunks_index_path):
                 print(f"{Colors.GREEN}Initializing code chunks database...")
                 self.storage.store_code_chunks()
@@ -34,15 +35,23 @@ class CodeWorkflow:
         except Exception as e:
             print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
 
-
     async def perform_diff(self, query: str) -> str:
         try:
             self._check_code_chunks()
 
             print(f"{Colors.GREEN}🔍 Processing query...")
 
+            codebase_stats = self.storage.get_codebase_stats()
+
             print(f"{Colors.GREEN}🤖 Analyzing query scope...")
-            scope = await self.scope_analyzer.analyze(query)
+            scope = await self.scope_analyzer.analyze(query, codebase_stats=codebase_stats)
+
+            effective_top_k = scope.suggested_top_k
+            if scope.target_file and scope.target_file in codebase_stats["chunks_by_file"]:
+                file_chunk_count = codebase_stats["chunks_by_file"][scope.target_file]
+                effective_top_k = min(scope.suggested_top_k, file_chunk_count)
+            elif codebase_stats["total_chunks"] > 0:
+                effective_top_k = min(scope.suggested_top_k, codebase_stats["total_chunks"])
 
             print(f"{Colors.GREEN}📊 Scope Analysis:")
             print(f"{Colors.GREEN}  - Type: {scope.scope_type}")
@@ -52,19 +61,25 @@ class CodeWorkflow:
                 print(f"{Colors.GREEN}  - Target File: {scope.target_file}")
             if scope.target_functions:
                 print(f"{Colors.GREEN}  - Target Functions: {', '.join(scope.target_functions)}")
-            print(f"{Colors.GREEN}  - Suggested Chunks: {scope.suggested_top_k}")
+            print(
+                f"{Colors.GREEN}  - Effective Chunks: {effective_top_k} (suggested: {scope.suggested_top_k})"
+            )
 
-            code_chunks = self.storage.search_code_chunks(query, top_k=scope.suggested_top_k)
+            code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k)
 
             if scope.target_file:
-                code_chunks = [chunk for chunk in code_chunks if chunk['filename'] == scope.target_file]
+                code_chunks = [
+                    chunk for chunk in code_chunks if chunk["filename"] == scope.target_file
+                ]
 
             if not code_chunks:
                 return "Nothing found. Please try a different query."
 
             print(f"{Colors.GREEN}📝 Selected {len(code_chunks)} chunk(s) for modification:")
             for i, chunk in enumerate(code_chunks, 1):
-                print(f"{Colors.GREEN}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} (similarity: {chunk['similarity']:.3f})")
+                print(
+                    f"{Colors.GREEN}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} (similarity: {chunk['similarity']:.3f})"
+                )
 
             changes = []
 
@@ -72,30 +87,33 @@ class CodeWorkflow:
             chunk_context = []
             for i, c in enumerate(code_chunks, 1):
                 chunk_context.append(
-                    f"Chunk #{i} (similarity: {c['similarity']:.3f}, HIGHEST MATCH)" if i == 1 else
-                    f"Chunk #{i} (similarity: {c['similarity']:.3f})"
+                    f"Chunk #{i} (similarity: {c['similarity']:.3f}, HIGHEST MATCH)"
+                    if i == 1
+                    else f"Chunk #{i} (similarity: {c['similarity']:.3f})"
                 )
                 chunk_context.append(f"  - Type: {c['type']}")
                 chunk_context.append(f"  - Name: {c['name']}")
                 chunk_context.append(f"  - File: {c['filename']}")
 
                 # Calculate indentation level for emphasis
-                code_lines = c['code'].split('\n')
-                first_line = code_lines[0] if code_lines else ''
-                indent_spaces = len(first_line) - len(first_line.lstrip(' '))
+                code_lines = c["code"].split("\n")
+                first_line = code_lines[0] if code_lines else ""
+                indent_spaces = len(first_line) - len(first_line.lstrip(" "))
 
-                chunk_context.append(f"  - Indentation: {indent_spaces} spaces (MUST BE PRESERVED EXACTLY)")
+                chunk_context.append(
+                    f"  - Indentation: {indent_spaces} spaces (MUST BE PRESERVED EXACTLY)"
+                )
                 chunk_context.append(f"  - Code:\n{c['code']}")
                 chunk_context.append("")
 
             # Adjust instructions based on scope
-            if scope.scope_type in ['file', 'project', 'all']:
+            if scope.scope_type in ["file", "project", "all"]:
                 scope_instruction = f"""
             SCOPE: The user wants to modify {scope.intent_description}.
             This is a BROAD scope ({scope.scope_type}) - you MUST return modifications for ALL {len(code_chunks)} chunks provided below.
             Each chunk should receive the modification requested by the user.
             """
-            elif scope.scope_type == 'multiple':
+            elif scope.scope_type == "multiple":
                 scope_instruction = f"""
             SCOPE: The user wants to modify {scope.intent_description}.
             This is a MULTIPLE scope - modify the chunks that best match the user's specific targets.
@@ -160,15 +178,12 @@ class CodeWorkflow:
                 cleaned_code = self._clean_code_response(str(output.code))
 
                 for chunk in code_chunks:
-                    if chunk['filename'] == output.filename:
+                    if chunk["filename"] == output.filename:
                         # Ensure indentation is preserved
                         # TODO: already handling at the prompt phase
                         # cleaned_code = self._fix_indentation(cleaned_code, chunk['code'])
 
-                        changes.append({
-                            'chunk': chunk,
-                            'updated_code': cleaned_code
-                        })
+                        changes.append({"chunk": chunk, "updated_code": cleaned_code})
                         break
 
             # Generate combined diff
@@ -181,23 +196,21 @@ class CodeWorkflow:
             target_files = set()
 
             for change in changes:
-                chunk = change['chunk']
-                updated_code = change['updated_code']
-                target_files.add(chunk['filename'])
+                chunk = change["chunk"]
+                updated_code = change["updated_code"]
+                target_files.add(chunk["filename"])
 
-                diff = self._generate_diff(
-                    chunk['code'],
-                    updated_code,
-                    chunk['filename']
-                )
+                diff = self._generate_diff(chunk["code"], updated_code, chunk["filename"])
 
                 print(f"{Colors.GREEN}File: {chunk['filename']}")
-                print(f"{Colors.GREEN}Target: {chunk['type']} '{chunk['name']}' (lines {chunk['lineno']}-{chunk['end_lineno']})")
+                print(
+                    f"{Colors.GREEN}Target: {chunk['type']} '{chunk['name']}' (lines {chunk['lineno']}-{chunk['end_lineno']})"
+                )
                 print(f"{Colors.GREEN}Diff:")
                 print(diff)
                 print(f"{Colors.GREEN}{'-'*30}")
 
-                if input("Apply this change? (y/n): ").strip().lower() != 'y':
+                if input("Apply this change? (y/n): ").strip().lower() != "y":
                     continue
 
                 print(f"{Colors.GREEN}{'='*50}")
@@ -209,7 +222,6 @@ class CodeWorkflow:
         except Exception as e:
             return f"Error in code workflow: {str(e)}"
 
-
     def _generate_diff(self, original: str, modified: str, filename: str = "file.py") -> str:
         """Generate a unified diff between original and modified code"""
         original_lines = original.splitlines(keepends=True)
@@ -220,14 +232,14 @@ class CodeWorkflow:
             modified_lines,
             fromfile=f"a/{filename}",
             tofile=f"b/{filename}",
-            lineterm=""
+            lineterm="",
         )
 
-        return ''.join(diff)
+        return "".join(diff)
 
     def get_function_signatures(self, filename: str | None = None) -> str:
         try:
-            chunks_metadata_path = os.path.join(self.storage.storage_dir, 'chunks_metadata.npy')
+            chunks_metadata_path = os.path.join(self.storage.storage_dir, "chunks_metadata.npy")
 
             if not os.path.exists(chunks_metadata_path):
                 return "No code chunks found. Run /chunks first."
@@ -235,10 +247,10 @@ class CodeWorkflow:
             metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
 
             if filename:
-                metadata = [chunk for chunk in metadata if chunk['filename'] == filename]
+                metadata = [chunk for chunk in metadata if chunk["filename"] == filename]
 
-            functions = [chunk for chunk in metadata if chunk['type'] == 'function']
-            classes = [chunk for chunk in metadata if chunk['type'] == 'class']
+            functions = [chunk for chunk in metadata if chunk["type"] == "function"]
+            classes = [chunk for chunk in metadata if chunk["type"] == "class"]
 
             result = f"{Colors.GREEN}Code Structure:\n"
 
@@ -263,32 +275,32 @@ class CodeWorkflow:
 
         # Look for explicit filename mentions
         filename_patterns = [
-            r'in\s+(\w+\.py)',  # "in main.py"
-            r'(\w+\.py)',       # "main.py"
-            r'(\w+)\s+file',    # "main file"
-            r'(\w+)\s+module',  # "storage module"
+            r"in\s+(\w+\.py)",  # "in main.py"
+            r"(\w+\.py)",  # "main.py"
+            r"(\w+)\s+file",  # "main file"
+            r"(\w+)\s+module",  # "storage module"
         ]
 
         for pattern in filename_patterns:
             match = re.search(pattern, query, re.IGNORECASE)
             if match:
                 filename = match.group(1)
-                if not filename.endswith('.py'):
-                    filename += '.py'
+                if not filename.endswith(".py"):
+                    filename += ".py"
                 return filename
 
         return None
 
     def _clean_code_response(self, code: str) -> str:
         """Clean AI response to extract just the code"""
-        if code.startswith('```python'):
-            code = code.split('```python')[1]
-        if code.startswith('```'):
-            code = code.split('```')[1]
-        if code.endswith('```'):
-            code = code.rsplit('```', 1)[0]
-        code = code.lstrip('\n')
-        code = code.rstrip('\n')
+        if code.startswith("```python"):
+            code = code.split("```python")[1]
+        if code.startswith("```"):
+            code = code.split("```")[1]
+        if code.endswith("```"):
+            code = code.rsplit("```", 1)[0]
+        code = code.lstrip("\n")
+        code = code.rstrip("\n")
         return code
 
     def _fix_indentation(self, generated_code: str, original_code: str) -> str:
@@ -301,8 +313,8 @@ class CodeWorkflow:
             return generated_code
 
         # Get the base indentation from the original code's first line
-        original_lines = original_code.split('\n')
-        generated_lines = generated_code.split('\n')
+        original_lines = original_code.split("\n")
+        generated_lines = generated_code.split("\n")
 
         if not original_lines or not generated_lines:
             return generated_code
@@ -311,9 +323,9 @@ class CodeWorkflow:
         generated_first_line = generated_lines[0]
 
         # Count leading spaces in original
-        original_indent = len(original_first_line) - len(original_first_line.lstrip(' '))
+        original_indent = len(original_first_line) - len(original_first_line.lstrip(" "))
         # Count leading spaces in generated
-        generated_indent = len(generated_first_line) - len(generated_first_line.lstrip(' '))
+        generated_indent = len(generated_first_line) - len(generated_first_line.lstrip(" "))
 
         # If indentation matches, no fix needed
         if original_indent == generated_indent:
@@ -328,38 +340,38 @@ class CodeWorkflow:
             if line.strip():  # Only fix non-empty lines
                 if indent_diff > 0:
                     # Add missing indentation
-                    fixed_lines.append(' ' * indent_diff + line)
+                    fixed_lines.append(" " * indent_diff + line)
                 else:
                     # Remove extra indentation (be careful not to remove too much)
                     spaces_to_remove = abs(indent_diff)
-                    if line.startswith(' ' * spaces_to_remove):
+                    if line.startswith(" " * spaces_to_remove):
                         fixed_lines.append(line[spaces_to_remove:])
                     else:
                         fixed_lines.append(line)
             else:
                 fixed_lines.append(line)
 
-        return '\n'.join(fixed_lines)
+        return "\n".join(fixed_lines)
 
     def _apply_change(self, change: dict) -> str:
         """Apply a single change to a file"""
         try:
-            chunk = change['chunk']
-            updated_code = change['updated_code']
+            chunk = change["chunk"]
+            updated_code = change["updated_code"]
 
-            file_path = os.path.join(self.storage.app_dir, chunk['filename'])
-            with open(file_path, 'r') as f:
+            file_path = os.path.join(self.storage.app_dir, chunk["filename"])
+            with open(file_path, "r") as f:
                 full_content = f.read()
 
-            lines = full_content.split('\n')
-            start_line = chunk['lineno'] - 1
-            end_line = chunk['end_lineno']
+            lines = full_content.split("\n")
+            start_line = chunk["lineno"] - 1
+            end_line = chunk["end_lineno"]
 
-            new_code_lines = updated_code.split('\n')
+            new_code_lines = updated_code.split("\n")
             modified_lines = lines[:start_line] + new_code_lines + lines[end_line:]
 
-            new_content = '\n'.join(modified_lines)
-            with open(file_path, 'w') as f:
+            new_content = "\n".join(modified_lines)
+            with open(file_path, "w") as f:
                 f.write(new_content)
 
             self.storage.store_code_chunks()

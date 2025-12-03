@@ -1,8 +1,9 @@
 import os
+from typing import Literal
+
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from typing import Literal
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -12,25 +13,20 @@ class ScopeAnalysis(BaseModel):
         description="The scope of changes requested by the user"
     )
     confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence level of the analysis (0.0 to 1.0)"
+        ge=0.0, le=1.0, description="Confidence level of the analysis (0.0 to 1.0)"
     )
     target_file: str | None = Field(
         default=None,
-        description="Specific filename mentioned in the query, if any (e.g., 'main.py')"
+        description="Specific filename mentioned in the query, if any (e.g., 'main.py')",
     )
     target_functions: list[str] = Field(
-        default_factory=list,
-        description="List of specific function or class names mentioned"
+        default_factory=list, description="List of specific function or class names mentioned"
     )
     intent_description: str = Field(
         description="Human-readable description of what the user wants to do"
     )
     suggested_top_k: int = Field(
-        ge=1,
-        le=100,
-        description="Suggested number of code chunks to retrieve based on scope"
+        ge=1, le=100, description="Suggested number of code chunks to retrieve based on scope"
     )
 
 
@@ -39,9 +35,25 @@ class ScopeAnalyzer:
         self.model = os.getenv("AI_MODEL", "claude-3-5-haiku-20241022")
         self.agent = Agent(self.model, output_type=ScopeAnalysis, retries=3)
 
-    async def analyze(self, query: str) -> ScopeAnalysis:
-        system_prompt = """You are a code scope analyzer. Your job is to understand user queries about code modifications and determine the scope of changes.
+    async def analyze(self, query: str, codebase_stats: dict | None = None) -> ScopeAnalysis:
+        stats_context = ""
+        if codebase_stats and codebase_stats.get("total_chunks", 0) > 0:
+            stats_context = f"""
+**CODEBASE STATISTICS (use these to inform your suggested_top_k):**
+- Total chunks in codebase: {codebase_stats['total_chunks']}
+- Functions: {codebase_stats['chunks_by_type'].get('function', 0)}
+- Classes: {codebase_stats['chunks_by_type'].get('class', 0)}
+- Files and their chunk counts:
+{chr(10).join(f'  - {f}: {c} chunks' for f, c in codebase_stats['chunks_by_file'].items())}
 
+IMPORTANT: Use these REAL numbers to decide suggested_top_k:
+- If targeting a specific file, cap top_k to that file's chunk count
+- If targeting specific functions, use len(target_functions) + 2 as top_k
+- Never suggest more chunks than actually exist in the target scope
+"""
+
+        system_prompt = f"""You are a code scope analyzer. Your job is to understand user queries about code modifications and determine the scope of changes.
+{stats_context}
 Analyze the user's query and determine:
 
 1. **scope_type**: The breadth of changes requested
@@ -70,10 +82,11 @@ Analyze the user's query and determine:
    - Example: "Update all database query functions to use async/await"
 
 6. **suggested_top_k**: How many code chunks to retrieve
-   - single: 3-5 chunks (to ensure we get the right one)
-   - multiple: 5-15 chunks (depending on how many targets)
-   - file: 10-50 chunks (all functions in a file)
-   - project/all: 20-100 chunks (broad scope)
+   - ALWAYS base this on the ACTUAL codebase statistics above when available
+   - single: min(3, total_chunks) - just enough to find the target
+   - multiple: len(target_functions) + 2 - targets plus small buffer
+   - file: exact chunk count of target file (from stats above)
+   - project/all: total_chunks or reasonable cap
 
 **Important Guidelines:**
 - Be language-agnostic: queries might be in English, Spanish, Portuguese, etc.
@@ -81,6 +94,7 @@ Analyze the user's query and determine:
 - Look for specificity: specific names = narrow scope, general terms = broad scope
 - Consider context: "add logging" to one function vs "add logging" everywhere
 - Default to "single" scope if ambiguous (safer to modify less)
+- NEVER suggest more chunks than exist in the target scope
 
 **Examples:**
 
@@ -88,16 +102,13 @@ Query: "add print statement to get_todo"
 → scope_type: "single", target_functions: ["get_todo"], suggested_top_k: 3
 
 Query: "update get_todo and delete_todo to use async"
-→ scope_type: "multiple", target_functions: ["get_todo", "delete_todo"], suggested_top_k: 10
+→ scope_type: "multiple", target_functions: ["get_todo", "delete_todo"], suggested_top_k: 4
 
-Query: "add docstrings to every function in storage.py"
-→ scope_type: "file", target_file: "storage.py", suggested_top_k: 30
+Query: "add docstrings to every function in storage.py" (storage.py has 12 chunks)
+→ scope_type: "file", target_file: "storage.py", suggested_top_k: 12
 
-Query: "refactor all error handling across the codebase"
+Query: "refactor all error handling across the codebase" (50 total chunks)
 → scope_type: "all", suggested_top_k: 50
-
-Query: "añadir logs a todas las funciones en auth.py"
-→ scope_type: "file", target_file: "auth.py", suggested_top_k: 30
 """
 
         user_message = f"""Analyze this query and return a structured scope analysis:
@@ -108,7 +119,7 @@ Remember to:
 1. Determine if this is single/multiple/file/project/all scope
 2. Extract any specific filenames or function names
 3. Provide a confidence score
-4. Suggest an appropriate top_k value
+4. Suggest an appropriate top_k value based on ACTUAL codebase statistics
 5. Write a clear intent description"""
 
         try:
@@ -121,5 +132,5 @@ Remember to:
                 target_file=None,
                 target_functions=[],
                 intent_description=f"Failed to analyze query: {str(e)}",
-                suggested_top_k=3
+                suggested_top_k=3,
             )
