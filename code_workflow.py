@@ -65,7 +65,8 @@ class CodeWorkflow:
                 f"{Colors.GREEN}  - Effective Chunks: {effective_top_k} (suggested: {scope.suggested_top_k})"
             )
 
-            code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k)
+            print(f"{Colors.GREEN}🔎 Retrieving and reranking code chunks...")
+            code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True)
 
             if scope.target_file:
                 code_chunks = [
@@ -77,8 +78,10 @@ class CodeWorkflow:
 
             print(f"{Colors.GREEN}📝 Selected {len(code_chunks)} chunk(s) for modification:")
             for i, chunk in enumerate(code_chunks, 1):
+                ce_score = chunk.get("cross_encoder_score", 0)
                 print(
-                    f"{Colors.GREEN}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} (similarity: {chunk['similarity']:.3f})"
+                    f"{Colors.GREEN}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} "
+                    f"(bi: {chunk['similarity']:.3f}, ce: {ce_score:.3f})"
                 )
 
             changes = []
@@ -86,10 +89,11 @@ class CodeWorkflow:
             # Build detailed chunk context with rankings
             chunk_context = []
             for i, c in enumerate(code_chunks, 1):
+                ce_score = c.get("cross_encoder_score", 0)
                 chunk_context.append(
-                    f"Chunk #{i} (similarity: {c['similarity']:.3f}, HIGHEST MATCH)"
+                    f"Chunk #{i} (relevance: {ce_score:.3f}, HIGHEST MATCH)"
                     if i == 1
-                    else f"Chunk #{i} (similarity: {c['similarity']:.3f})"
+                    else f"Chunk #{i} (relevance: {ce_score:.3f})"
                 )
                 chunk_context.append(f"  - Type: {c['type']}")
                 chunk_context.append(f"  - Name: {c['name']}")

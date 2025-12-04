@@ -7,7 +7,7 @@ from typing import Any
 import faiss
 import numpy as np
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import CrossEncoder, SentenceTransformer
 
 load_dotenv()
 
@@ -17,6 +17,7 @@ class Storage:
         self.storage_dir = storage_dir
         self.app_dir = app_dir
         self._model = None
+        self._cross_encoder = None
 
     @property
     def model(self):
@@ -24,6 +25,15 @@ class Storage:
             embedding_model = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
             self._model = SentenceTransformer(embedding_model)
         return self._model
+
+    @property
+    def cross_encoder(self):
+        if self._cross_encoder is None:
+            cross_encoder_model = os.getenv(
+                "CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+            )
+            self._cross_encoder = CrossEncoder(cross_encoder_model)
+        return self._cross_encoder
 
     def ensure_storage_dir(self):
         if not os.path.exists(self.storage_dir):
@@ -120,6 +130,9 @@ class Storage:
                     # increase similarity if filename is mentioned in initial query
                     similarity_boost = self._perform_similarity_boost(filename, query)
                     similarity = min(similarity + similarity_boost, 1.0)  # Cap at 1.0
+
+                    if similarity < 0.5:
+                        continue
 
                     results.append(
                         {"filename": filename, "content": content, "similarity": similarity}
@@ -251,7 +264,7 @@ class Storage:
         return "\n".join(lines[start_line - 1 : end_line])
 
     def search_code_chunks(
-        self, query: str, top_k: int = 5, return_all_scores: bool = False
+        self, query: str, top_k: int = 5, return_all_scores: bool = False, rerank: bool = False
     ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[float]]:
         chunks_index_path = os.path.join(self.storage_dir, "chunks_index.faiss")
         chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
@@ -308,11 +321,30 @@ class Storage:
 
         results.sort(key=lambda item: item["similarity"], reverse=True)
 
+        if rerank and results:
+            results = self.rerank_results(query, results)
+
         if return_all_scores:
-            all_scores = [r["similarity"] for r in results]
+            score_key = "cross_encoder_score" if rerank else "similarity"
+            all_scores = [r.get(score_key, r["similarity"]) for r in results]
             return results[:top_k], all_scores
 
         return results[:top_k]
+
+    def rerank_results(
+        self, query: str, results: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        if not results:
+            return results
+
+        pairs = [[query, chunk["code"]] for chunk in results]
+        scores = self.cross_encoder.predict(pairs)
+
+        for i, chunk in enumerate(results):
+            chunk["cross_encoder_score"] = float(scores[i])
+
+        results.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
+        return results
 
     def find_functions_by_name(self, function_name: str) -> list[dict[str, Any]]:
         chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
