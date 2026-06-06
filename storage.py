@@ -1,6 +1,7 @@
 import ast
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -52,25 +53,22 @@ class Storage:
 
         return None, []
 
+    def _save_index(
+        self, index, embeddings, index_filename: str, metadata_filename: str, all_metadata: list
+    ):
+        if index is None:
+            index = faiss.IndexFlatL2(embeddings.shape[1])
+
+        index.add(embeddings)
+        faiss.write_index(index, os.path.join(self.storage_dir, index_filename))
+        np.save(os.path.join(self.storage_dir, metadata_filename), all_metadata)
+
     def ensure_storage_dir(self):
         os.makedirs(self.storage_dir, exist_ok=True)
-
-    def clean_embeddings(self):
-        files_to_remove = ["index.faiss", "filenames.npy"]
-
-        for file in files_to_remove:
-            file_path = os.path.join(self.storage_dir, file)
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                print(f"Removed: {file_path}")
-
-        print("Database reset complete!")
 
     def store_files(self, match: str = ""):
         self._ensure_dirs()
 
-        index_path = os.path.join(self.storage_dir, "index.faiss")
-        filenames_path = os.path.join(self.storage_dir, "filenames.npy")
         index, existing_filenames = self._load_index("index.faiss", "filenames.npy")
 
         texts = []
@@ -87,17 +85,8 @@ class Storage:
             return existing_filenames, []
 
         embeddings = self.model.encode(texts, convert_to_numpy=True)
-
-        if index is None:
-            dim = embeddings.shape[1]
-            index = faiss.IndexFlatL2(dim)
-
-        index.add(embeddings)
-
-        faiss.write_index(index, index_path)
-
         all_filenames = existing_filenames + filenames
-        np.save(filenames_path, all_filenames)
+        self._save_index(index, embeddings, "index.faiss", "filenames.npy", all_filenames)
 
         return all_filenames, filenames
 
@@ -169,8 +158,6 @@ class Storage:
     def store_code_chunks(self, match: str = ""):
         self._ensure_dirs()
 
-        chunks_index_path = os.path.join(self.storage_dir, "chunks_index.faiss")
-        chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
         chunks_index, existing_metadata = self._load_index(
             "chunks_index.faiss", "chunks_metadata.npy", allow_pickle=True
         )
@@ -206,55 +193,31 @@ class Storage:
             return existing_metadata, []
 
         embeddings = self.model.encode(chunks_data, convert_to_numpy=True)
-        dim = embeddings.shape[1]
-
-        if chunks_index is None:
-            chunks_index = faiss.IndexFlatL2(dim)
-
-        chunks_index.add(embeddings)
-
         all_metadata = existing_metadata + new_chunks
-
-        faiss.write_index(chunks_index, chunks_index_path)
-        np.save(chunks_metadata_path, all_metadata)
+        self._save_index(
+            chunks_index, embeddings, "chunks_index.faiss", "chunks_metadata.npy", all_metadata
+        )
 
         return all_metadata, new_chunks
 
-    def _parse_code_chunks(self, code: str, filepath: str) -> list[dict[str, Any]]:
+    def _parse_code_chunks(self, code: str, filepath: str) -> Iterator[dict[str, Any]]:
         try:
             tree = ast.parse(code)
-            chunks = []
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
-                    chunk = {
-                        "type": "function",
-                        "name": node.name,
-                        "lineno": node.lineno,
-                        "end_lineno": getattr(node, "end_lineno", node.lineno),
-                        "code": self._extract_code_segment(
-                            code, node.lineno, getattr(node, "end_lineno", node.lineno)
-                        ),
-                        "filepath": filepath,
-                    }
-                    chunks.append(chunk)
-                elif isinstance(node, ast.ClassDef):
-                    chunk = {
-                        "type": "class",
-                        "name": node.name,
-                        "lineno": node.lineno,
-                        "end_lineno": getattr(node, "end_lineno", node.lineno),
-                        "code": self._extract_code_segment(
-                            code, node.lineno, getattr(node, "end_lineno", node.lineno)
-                        ),
-                        "filepath": filepath,
-                    }
-                    chunks.append(chunk)
-
-            return chunks
         except SyntaxError as e:
             print(f"Syntax error in {filepath}: {e}")
-            return []
+            return
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                end_lineno = getattr(node, "end_lineno", node.lineno)
+                yield {
+                    "type": "function" if isinstance(node, ast.FunctionDef) else "class",
+                    "name": node.name,
+                    "lineno": node.lineno,
+                    "end_lineno": end_lineno,
+                    "code": self._extract_code_segment(code, node.lineno, end_lineno),
+                    "filepath": filepath,
+                }
 
     def _extract_code_segment(self, code: str, start_line: int, end_line: int) -> str:
         lines = code.split("\n")
