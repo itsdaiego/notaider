@@ -164,7 +164,7 @@ async def main():
         else:
             event.app.exit()
 
-    completer = WordCompleter(['@ask', '@add', '@code', 'exit', 'quit'], ignore_case=True, sentence=True)
+    completer = WordCompleter(['@ask', '@add', '@code', "@list", 'exit', 'quit'], ignore_case=True, sentence=True)
 
     style = Style.from_dict({
         'completion-menu.completion': 'bg:#424242 #ffffff',
@@ -186,10 +186,11 @@ async def main():
     print(f"{Colors.GREEN}Commands:")
     print(f"{Colors.GREEN}  @ask <prompt>          - Enhance and process prompt")
     print(f"{Colors.GREEN}  @add <pattern>         - Add files to vector database")
+    print(f"{Colors.GREEN}  @list <request>        - List indexed files")
     print(f"{Colors.GREEN}  @code <request>        - AI-powered code modification with preview")
     print(f"{Colors.GREEN}Type 'exit' or press Ctrl+D to quit.")
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY") or ""
 
     while True:
         try:
@@ -247,6 +248,19 @@ async def main():
                     print(f"{Colors.GREEN}Files added:")
                     for file in filenames:
                         print(f"{Colors.GREEN}{file}")
+
+            elif command.startswith('@list'):
+                try:
+                    notaider = NotAider(api_key=api_key)
+                    files = notaider.storage.list_indexed_files()
+                    if files:
+                        print(f"{Colors.GREEN}Indexed files:")
+                        for file in files:
+                            print(f"{Colors.GREEN}{file}")
+                    else:
+                        print(f"{Colors.GREEN}No files indexed yet.")
+                except Exception as e:
+                    print(f"{Colors.GREEN}Error listing files: {str(e)}")
 
             elif command.startswith('@code '):
                 content = command[6:].strip()

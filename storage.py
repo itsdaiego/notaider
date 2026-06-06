@@ -223,6 +223,16 @@ class Storage:
         lines = code.split("\n")
         return "\n".join(lines[start_line - 1 : end_line])
 
+    def list_indexed_files(self) -> list[str]:
+        try:
+            print("starting lookup")
+            _, files = self._load_index("index.faiss", "filenames.npy")
+            print("found files", files)
+            return files
+        except Exception as e:
+            print(f"Error listing indexed files: {e}")
+            return []
+
     def search_code_chunks(
         self, query: str, top_k: int = 5, return_all_scores: bool = False, rerank: bool = False
     ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[float]]:
