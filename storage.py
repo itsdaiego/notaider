@@ -35,9 +35,25 @@ class Storage:
             self._cross_encoder = CrossEncoder(cross_encoder_model)
         return self._cross_encoder
 
+    def _ensure_dirs(self):
+        os.makedirs(self.storage_dir, exist_ok=True)
+        os.makedirs(self.app_dir, exist_ok=True)
+
+    def _load_index(
+        self, index_filename: str, metadata_filename: str, allow_pickle: bool = False
+    ) -> tuple:
+        index_path = os.path.join(self.storage_dir, index_filename)
+        metadata_path = os.path.join(self.storage_dir, metadata_filename)
+
+        if os.path.exists(index_path) and os.path.exists(metadata_path):
+            index = faiss.read_index(index_path)
+            data = np.load(metadata_path, allow_pickle=allow_pickle).tolist()
+            return index, data
+
+        return None, []
+
     def ensure_storage_dir(self):
-        if not os.path.exists(self.storage_dir):
-            os.makedirs(self.storage_dir)
+        os.makedirs(self.storage_dir, exist_ok=True)
 
     def clean_embeddings(self):
         files_to_remove = ["index.faiss", "filenames.npy"]
@@ -51,21 +67,11 @@ class Storage:
         print("Database reset complete!")
 
     def store_files(self, match: str = ""):
-        if not os.path.exists(os.path.join(self.storage_dir)):
-            os.makedirs(self.storage_dir)
-
-        if not os.path.exists(os.path.join(self.app_dir)):
-            os.makedirs(self.app_dir)
+        self._ensure_dirs()
 
         index_path = os.path.join(self.storage_dir, "index.faiss")
         filenames_path = os.path.join(self.storage_dir, "filenames.npy")
-
-        if os.path.exists(index_path) and os.path.exists(filenames_path):
-            index = faiss.read_index(index_path)
-            existing_filenames = np.load(filenames_path).tolist()
-        else:
-            index = None
-            existing_filenames = []
+        index, existing_filenames = self._load_index("index.faiss", "filenames.npy")
 
         texts = []
         filenames = []
@@ -161,21 +167,13 @@ class Storage:
         return boost
 
     def store_code_chunks(self, match: str = ""):
-        if not os.path.exists(self.storage_dir):
-            os.makedirs(self.storage_dir)
-
-        if not os.path.exists(self.app_dir):
-            os.makedirs(self.app_dir)
+        self._ensure_dirs()
 
         chunks_index_path = os.path.join(self.storage_dir, "chunks_index.faiss")
         chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
-
-        if os.path.exists(chunks_index_path) and os.path.exists(chunks_metadata_path):
-            chunks_index = faiss.read_index(chunks_index_path)
-            existing_metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
-        else:
-            chunks_index = None
-            existing_metadata = []
+        chunks_index, existing_metadata = self._load_index(
+            "chunks_index.faiss", "chunks_metadata.npy", allow_pickle=True
+        )
 
         chunks_data = []
         new_chunks = []
