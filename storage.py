@@ -40,7 +40,7 @@ class Storage:
         os.makedirs(self.storage_dir, exist_ok=True)
         os.makedirs(self.app_dir, exist_ok=True)
 
-    def _load_index(
+    def load_index(
         self, index_filename: str, metadata_filename: str, allow_pickle: bool = False
     ) -> tuple:
         index_path = os.path.join(self.storage_dir, index_filename)
@@ -60,6 +60,7 @@ class Storage:
             index = faiss.IndexFlatL2(embeddings.shape[1])
 
         index.add(embeddings)
+
         faiss.write_index(index, os.path.join(self.storage_dir, index_filename))
         np.save(os.path.join(self.storage_dir, metadata_filename), all_metadata)
 
@@ -69,7 +70,7 @@ class Storage:
     def store_files(self, match: str = ""):
         self._ensure_dirs()
 
-        index, existing_filenames = self._load_index("index.faiss", "filenames.npy")
+        index, existing_filenames = self.load_index("index.faiss", "filenames.npy")
 
         texts = []
         filenames = []
@@ -158,47 +159,74 @@ class Storage:
     def store_code_chunks(self, match: str = ""):
         self._ensure_dirs()
 
-        chunks_index, existing_metadata = self._load_index(
+        chunks_index, existing_metadata = self.load_index(
             "chunks_index.faiss", "chunks_metadata.npy", allow_pickle=True
         )
 
-        chunks_data = []
-        new_chunks = []
+        existing_by_id = {
+            meta["chunk_id"]: (position, meta) for position, meta in enumerate(existing_metadata)
+        }
+        stale_ids = set()
+
+        changed_chunks_data = []
+        changed_metadata = []
 
         for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
             if path.is_file() and path.name.endswith(".py"):
                 with open(path, "r", encoding="utf-8") as file:
                     content = file.read()
 
-                    chunks = self._parse_code_chunks(content, str(path))
+                for chunk in self._parse_code_chunks(content, str(path)):
+                    chunk_id = f"{path.name}:{chunk['type']}:{chunk['name']}"
+                    existing = existing_by_id.get(chunk_id)
 
-                    for chunk in chunks:
-                        chunk_id = f"{path.name}:{chunk['type']}:{chunk['name']}"
+                    if existing and existing[1]["code"] == chunk["code"]:
+                        continue
 
-                        if not any(meta["chunk_id"] == chunk_id for meta in existing_metadata):
-                            chunks_data.append(chunk["code"])
-                            new_chunks.append(
-                                {
-                                    "chunk_id": chunk_id,
-                                    "filename": path.name,
-                                    "type": chunk["type"],
-                                    "name": chunk["name"],
-                                    "lineno": chunk["lineno"],
-                                    "end_lineno": chunk["end_lineno"],
-                                    "code": chunk["code"],
-                                }
-                            )
+                    # if is existing but code is not the same, its then stale and
+                    # needs to be updated
+                    if existing:
+                        stale_ids.add(chunk_id)
 
-        if not chunks_data:
+                    changed_chunks_data.append(chunk["code"])
+                    changed_metadata.append(
+                        {
+                            "chunk_id": chunk_id,
+                            "filename": path.name,
+                            "type": chunk["type"],
+                            "name": chunk["name"],
+                            "lineno": chunk["lineno"],
+                            "end_lineno": chunk["end_lineno"],
+                            "code": chunk["code"],
+                        }
+                    )
+
+        if not changed_chunks_data:
             return existing_metadata, []
 
-        embeddings = self.model.encode(chunks_data, convert_to_numpy=True)
-        all_metadata = existing_metadata + new_chunks
-        self._save_index(
-            chunks_index, embeddings, "chunks_index.faiss", "chunks_metadata.npy", all_metadata
+        unchanged_metadata = []
+        unchanged_embeddings = []
+        for position, meta in enumerate(existing_metadata):
+            if meta["chunk_id"] in stale_ids:
+                continue
+
+            unchanged_metadata.append(meta)
+            unchanged_embeddings.append(chunks_index.reconstruct(position))
+
+        changed_embeddings = self.model.encode(changed_chunks_data, convert_to_numpy=True)
+        all_metadata = unchanged_metadata + changed_metadata
+        all_embeddings = (
+            np.vstack([np.array(unchanged_embeddings), changed_embeddings])
+            if unchanged_embeddings
+            else changed_embeddings
         )
 
-        return all_metadata, new_chunks
+        fresh_index = faiss.IndexFlatL2(changed_embeddings.shape[1])
+        self._save_index(
+            fresh_index, all_embeddings, "chunks_index.faiss", "chunks_metadata.npy", all_metadata
+        )
+
+        return all_metadata, changed_metadata
 
     def _parse_code_chunks(self, code: str, filepath: str) -> Iterator[dict[str, Any]]:
         try:
@@ -226,7 +254,7 @@ class Storage:
     def list_indexed_files(self) -> list[str]:
         try:
             print("starting lookup")
-            _, files = self._load_index("index.faiss", "filenames.npy")
+            _, files = self.load_index("index.faiss", "filenames.npy")
             print("found files", files)
             return files
         except Exception as e:

@@ -221,7 +221,7 @@ class CodeWorkflow:
                 print(f"{Colors.GREEN}Files to be modified: {', '.join(target_files)}")
                 print(f"{Colors.GREEN}{'='*50}")
 
-                self._apply_change(change)
+                self._apply_change(change, target_files)
 
         except Exception as e:
             return f"Error in code workflow: {str(e)}"
@@ -357,7 +357,7 @@ class CodeWorkflow:
 
         return "\n".join(fixed_lines)
 
-    def _apply_change(self, change: dict) -> str:
+    def _apply_change(self, change: dict, target_files: set[str]) -> None:
         """Apply a single change to a file"""
         try:
             chunk = change["chunk"]
@@ -378,7 +378,7 @@ class CodeWorkflow:
             with open(file_path, "w") as f:
                 f.write(new_content)
 
-            self.storage.store_code_chunks()
-
+            for target_file in target_files:
+                self.storage.store_code_chunks(target_file)
         except Exception as e:
-            return f"Error applying change: {str(e)}"
+            print(f"Error applying change: {str(e)}")
