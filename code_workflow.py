@@ -165,7 +165,7 @@ class CodeWorkflow:
             """
 
             # Create a temporary agent with structured output for this specific
-            ai_model = os.getenv("AI_MODEL", "claude-3-5-haiku-20241022")
+            ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
             structured_agent = Agent(ai_model, output_type=list[CodeWorkflowOutput], retries=5)
             try:
                 response = await structured_agent.run(transformation_prompt)

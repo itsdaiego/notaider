@@ -44,7 +44,7 @@ def _print_logo():
 
 class NotAider:
     def __init__(self, api_key: str):
-        self.model = os.getenv("AI_MODEL", "claude-3-5-haiku-20241022")
+        self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
         self.client = Agent(self.model)
 
         self.storage = Storage(
@@ -189,7 +189,7 @@ async def main():
     print(f"{Colors.GREEN}  @code <request>        - AI-powered code modification with preview")
     print(f"{Colors.GREEN}Type 'exit' or press Ctrl+D to quit.")
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
 
     while True:
         try:
@@ -216,8 +216,8 @@ async def main():
                     continue
 
                 if not api_key:
-                    print(f"{Colors.GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
-                    print(f"{Colors.GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
+                    print(f"{Colors.GREEN}Error: OPENAI_API_KEY environment variable not set")
+                    print(f"{Colors.GREEN}Please set your API key: export OPENAI_API_KEY='your-key-here'")
                     continue
 
                 print(f"{Colors.GREEN}{'='*29}")
@@ -265,8 +265,8 @@ async def main():
                     actual_request = parts[1]
 
                 if not api_key:
-                    print(f"{Colors.GREEN}Error: ANTHROPIC_API_KEY environment variable not set")
-                    print(f"{Colors.GREEN}Please set your API key: export ANTHROPIC_API_KEY='your-key-here'")
+                    print(f"{Colors.GREEN}Error: OPENAI_API_KEY environment variable not set")
+                    print(f"{Colors.GREEN}Please set your API key: export OPENAI_API_KEY='your-key-here'")
                     continue
 
                 try:

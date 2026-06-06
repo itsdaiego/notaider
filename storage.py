@@ -82,16 +82,15 @@ class Storage:
 
         embeddings = self.model.encode(texts, convert_to_numpy=True)
 
-        dim = embeddings.shape[1]
-
         if index is None:
+            dim = embeddings.shape[1]
             index = faiss.IndexFlatL2(dim)
 
         index.add(embeddings)
 
-        all_filenames = existing_filenames + filenames
-
         faiss.write_index(index, index_path)
+
+        all_filenames = existing_filenames + filenames
         np.save(filenames_path, all_filenames)
 
         return all_filenames, filenames

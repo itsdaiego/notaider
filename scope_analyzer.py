@@ -32,7 +32,7 @@ class ScopeAnalysis(BaseModel):
 
 class ScopeAnalyzer:
     def __init__(self):
-        self.model = os.getenv("AI_MODEL", "claude-3-5-haiku-20241022")
+        self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
         self.agent = Agent(self.model, output_type=ScopeAnalysis, retries=3)
 
     async def analyze(self, query: str, codebase_stats: dict | None = None) -> ScopeAnalysis:
