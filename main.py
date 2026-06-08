@@ -290,7 +290,8 @@ async def main():
                         model=notaider.model,
                         client=notaider.client
                     )
-                    await code_workflow.perform_diff(actual_request)
+                    result_message = await code_workflow.perform_diff(actual_request)
+                    print(f"{result_message}" if result_message else "")
                 except Exception as e:
                     print(f"{Colors.GREEN}Error in code workflow: {str(e)}")
 

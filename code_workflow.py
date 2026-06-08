@@ -65,7 +65,11 @@ class CodeWorkflow:
                 f"{Colors.GREEN}  - Effective Chunks: {effective_top_k} (suggested: {scope.suggested_top_k})"
             )
 
+            if scope.confidence < 0.7:
+                return f"Confidence is low, skipping diff apply operation: {scope.confidence:.2f}"
+
             print(f"{Colors.GREEN}🔎 Retrieving and reranking code chunks...")
+
             code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True)
 
             if scope.target_file:
@@ -222,6 +226,8 @@ class CodeWorkflow:
                 print(f"{Colors.GREEN}{'='*50}")
 
                 self._apply_change(change, target_files)
+
+            return "Diff applied"
 
         except Exception as e:
             return f"Error in code workflow: {str(e)}"

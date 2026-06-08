@@ -8,13 +8,13 @@ help:
 	@echo "  make clean       - Clean up Python cache files"
 
 install:
-	pip install -e .
+	uv sync
 
 run:
-	python main.py
+	.venv/bin/python main.py
 
 run-debug:
-	python -c "import debugpy; debugpy.listen(('0.0.0.0', 5678)); print('🐛 Debug mode enabled - listening on 0.0.0.0:5678'); import runpy; runpy.run_path('main.py', run_name='__main__')"
+	.venv/bin/python -c "import debugpy; debugpy.listen(('0.0.0.0', 5678)); print('Debug mode enabled - listening on 0.0.0.0:5678'); import runpy; runpy.run_path('main.py', run_name='__main__')"
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

@@ -263,15 +263,10 @@ class Storage:
 
     def search_code_chunks(
         self, query: str, top_k: int = 5, return_all_scores: bool = False, rerank: bool = False
-    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[float]]:
-        chunks_index_path = os.path.join(self.storage_dir, "chunks_index.faiss")
-        chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
+    ) -> list[dict[str, Any]] | list[float]:
+        self._ensure_dirs()
 
-        if not os.path.exists(chunks_index_path) or not os.path.exists(chunks_metadata_path):
-            return ([], []) if return_all_scores else []
-
-        chunks_index = faiss.read_index(chunks_index_path)
-        metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
+        (chunks_index, metadata) = self.load_index("chunks_index.faiss", "chunks_metadata.npy", True)
 
         search_k = min(max(top_k * 3, 15), len(metadata))
 
