@@ -19,18 +19,16 @@ class CodeWorkflowOutput(BaseModel):
 
 
 class CodeWorkflow:
-    def __init__(self, storage, model, client):
+    def __init__(self, storage, model):
         self.storage = storage
         self.model = model
-        self.client = client
-        self.scope_analyzer = ScopeAnalyzer()
+        self.scope_analyzer = ScopeAnalyzer(model)
 
     def _check_code_chunks(self):
         try:
             chunks_index_path = os.path.join(self.storage.storage_dir, "chunks_index.faiss")
             if not os.path.exists(chunks_index_path):
                 print(f"{Colors.GREEN}Initializing code chunks database...")
-                self.storage.store_code_chunks()
                 print(f"{Colors.GREEN}Code chunks ready!")
         except Exception as e:
             print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
@@ -71,6 +69,10 @@ class CodeWorkflow:
             print(f"{Colors.GREEN}🔎 Retrieving and reranking code chunks...")
 
             code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True)
+
+            filenames = [chunk["filename"] for chunk in code_chunks]
+
+            self.storage.store_code_chunks(filenames)
 
             if scope.target_file:
                 code_chunks = [

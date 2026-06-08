@@ -12,7 +12,6 @@ from storage import Storage
 from pydantic_ai import Agent
 
 import os
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -110,30 +109,6 @@ Guidelines:
             return str(response)
         except Exception as e:
             return f"Error enhancing prompt: {str(e)}"
-
-
-    async def process_request(self, content: str) -> Optional[str]:
-        system_prompt = """You are an AI assistant that is designed to answer questions about programming, technology, and general knowledge.
-        Your task is to provide the best response to the user, and generate code according to the user's request.
-        the format should be like this:
-
-        ```python
-        <your code here>
-        ```
-
-        Guidelines:
-- Provide clear, concise answers
-- Use examples where helpful
-- Maintain a friendly and professional tone
-- Avoid unnecessary jargon
-- Provide the output as markdown code blocks when applicable
-"""
-
-        try:
-            response = await self.client.run(content)
-            return str(response.data)
-        except Exception as e:
-            return f"Error processing request: {str(e)}"
 
 
 class CommandLexer(Lexer):
@@ -281,7 +256,6 @@ async def main():
                     code_workflow = CodeWorkflow(
                         storage=notaider.storage,
                         model=notaider.model,
-                        client=notaider.client
                     )
                     result_message = await code_workflow.perform_diff(content)
                     print(f"{result_message}" if result_message else "")
