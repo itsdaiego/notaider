@@ -70,10 +70,6 @@ class CodeWorkflow:
 
             code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True)
 
-            filenames = [chunk["filename"] for chunk in code_chunks]
-
-            self.storage.store_code_chunks(filenames)
-
             if scope.target_file:
                 code_chunks = [
                     chunk for chunk in code_chunks if chunk["filename"] == scope.target_file
@@ -81,6 +77,9 @@ class CodeWorkflow:
 
             if not code_chunks:
                 return "Nothing found. Please try a different query."
+
+            for filename in {chunk["filename"] for chunk in code_chunks}:
+                self.storage.store_code_chunks(filename)
 
             print(f"{Colors.GREEN}📝 Selected {len(code_chunks)} chunk(s) for modification:")
             for i, chunk in enumerate(code_chunks, 1):
