@@ -81,6 +81,7 @@ Guidelines:
         )
         try:
             results = storage.search_content(content, top_k=3)
+            MAX_FILE_CHAR_SIZE = 1500
 
             similarity_threshold = float(os.getenv("SIMILARITY_THRESHOLD", "0.4"))
             context = ""
@@ -90,11 +91,14 @@ Guidelines:
                         print(f'Including {result["filename"]} (similarity: {result["similarity"]:.3f})')
                         print(f'Result length: {len(result["content"])}')
                         context += f"\n{i}: {result['filename']} (similarity: {result['similarity']:.2f}):\n"
-                        context += f"{result['content'][:5000]}{'...' if len(result['content']) > 1500 else ''}\n"
+                        context += f"{result['content'][:MAX_FILE_CHAR_SIZE]}\n"
 
             if context:
                 user_message = f"User query: {content}\n\nRelevant file content:{context}\n\nPlease analyze the code and provide a direct answer to the user's query using the provided context."
             else:
+                # TODO: this shouldnt be needed once we allow for tool calls 
+                # therefore allowing notaider to find additional information
+                # during inference time
                 user_message = f"Please enhance this prompt: {content}"
 
         except Exception as e:
@@ -103,7 +107,7 @@ Guidelines:
 
         try:
             response = await self.client.run(f"{system_prompt}\n\n{user_message}")
-            return str(response.data)
+            return str(response)
         except Exception as e:
             return f"Error enhancing prompt: {str(e)}"
 
@@ -229,10 +233,7 @@ async def main():
                     notaider = NotAider(api_key)
                     enhanced = await notaider.enhance_prompt(content)
 
-                    if enhanced and enhanced.startswith("Error"):
-                        print(f"{Colors.GREEN}{enhanced}")
-                    else:
-                        print(f"{Colors.GREEN}{enhanced}")
+                    print(f"{Colors.GREEN}{enhanced}")
 
                 except Exception as e:
                     print(f"{Colors.GREEN}Error initializing NotAider: {str(e)}")
@@ -266,17 +267,9 @@ async def main():
                 content = command[6:].strip()
                 if not content:
                     print(f"{Colors.GREEN}Usage: @code <your request>")
-                    print(f"{Colors.GREEN}       @code <filename> <your request>")
                     print(f"{Colors.GREEN}Example: @code Add None checks to the add_todo function")
-                    print(f"{Colors.GREEN}Example: @code main.py Add error handling to main function")
+                    print(f"{Colors.GREEN}Example: @code Add error handling to every function in main.py")
                     continue
-
-                # Check if first word is a filename
-                parts = content.split(' ', 1)
-                actual_request = content
-
-                if len(parts) > 1 and parts[0].endswith('.py'):
-                    actual_request = parts[1]
 
                 if not api_key:
                     print(f"{Colors.GREEN}Error: OPENAI_API_KEY environment variable not set")
@@ -290,7 +283,7 @@ async def main():
                         model=notaider.model,
                         client=notaider.client
                     )
-                    result_message = await code_workflow.perform_diff(actual_request)
+                    result_message = await code_workflow.perform_diff(content)
                     print(f"{result_message}" if result_message else "")
                 except Exception as e:
                     print(f"{Colors.GREEN}Error in code workflow: {str(e)}")
