@@ -70,7 +70,7 @@ class Storage:
     def store_files(self, match: str = ""):
         self._ensure_dirs()
 
-        index, existing_filenames = self.load_index("index.faiss", "filenames.npy")
+        index, existing_filenames = self.load_index("filenames_index.faiss", "filenames.npy")
 
         texts = []
         filenames = []
@@ -87,12 +87,14 @@ class Storage:
 
         embeddings = self.model.encode(texts, convert_to_numpy=True)
         all_filenames = existing_filenames + filenames
-        self._save_index(index, embeddings, "index.faiss", "filenames.npy", all_filenames)
+        self._save_index(index, embeddings, "filenames_index.faiss", "filenames.npy", all_filenames)
 
         return all_filenames, filenames
 
     def search_content(self, query, top_k=5):
-        index_path = os.path.join(self.storage_dir, "index.faiss")
+        self._ensure_dirs()
+
+        index_path = os.path.join(self.storage_dir, "filenames_index.faiss")
         filenames_path = os.path.join(self.storage_dir, "filenames.npy")
 
         index = faiss.read_index(index_path)
@@ -134,6 +136,9 @@ class Storage:
                     )
             except FileNotFoundError:
                 print(f"Warning: File {filename} not found in {self.app_dir}")
+                continue
+            except Exception as e:
+                print(f"Something went wrong: {e}")
                 continue
 
         results.sort(key=lambda item: item["similarity"], reverse=True)
@@ -254,7 +259,7 @@ class Storage:
     def list_indexed_files(self) -> list[str]:
         try:
             print("starting lookup")
-            _, files = self.load_index("index.faiss", "filenames.npy")
+            _, files = self.load_index("filenames_index.faiss", "filenames.npy")
             print("found files", files)
             return files
         except Exception as e:
