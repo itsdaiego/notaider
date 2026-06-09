@@ -283,41 +283,12 @@ class Storage:
 
         for idx, similarity in zip(indices[0], similarities):
             if idx < len(metadata):
-                chunk_meta = metadata[idx]
-
-                boost = 0.0
-                query_words = set(query.lower().split())
-                chunk_name_lower = chunk_meta["name"].lower()
-
-                chunk_name_boost_exact = float(os.getenv("CHUNK_NAME_BOOST_EXACT", "0.8"))
-                chunk_name_boost_partial = float(os.getenv("CHUNK_NAME_BOOST_PARTIAL", "0.4"))
-
-                if chunk_name_lower in query_words:
-                    boost = chunk_name_boost_exact
-                elif chunk_name_lower in query.lower():
-                    is_false_positive = any(
-                        word != chunk_name_lower and word in chunk_name_lower
-                        for word in query_words
-                    )
-                    if not is_false_positive:
-                        boost = chunk_name_boost_partial
-
-                similarity = min(similarity + boost, 1.0)
-
                 results.append(
                     {
-                        "chunk_id": chunk_meta["chunk_id"],
-                        "filename": chunk_meta["filename"],
-                        "type": chunk_meta["type"],
-                        "name": chunk_meta["name"],
-                        "lineno": chunk_meta["lineno"],
-                        "end_lineno": chunk_meta["end_lineno"],
-                        "code": chunk_meta["code"],
+                        **metadata[idx],
                         "similarity": similarity,
                     }
                 )
-
-        results.sort(key=lambda item: item["similarity"], reverse=True)
 
         if rerank and results:
             results = self.rerank_results(query, results)

@@ -8,6 +8,7 @@ from pydantic_ai import Agent
 
 from colors import Colors
 from scope_analyzer import ScopeAnalyzer
+from storage import Storage
 
 load_dotenv()
 
@@ -19,7 +20,7 @@ class CodeWorkflowOutput(BaseModel):
 
 
 class CodeWorkflow:
-    def __init__(self, storage, model):
+    def __init__(self, storage: Storage, model):
         self.storage = storage
         self.model = model
         self.scope_analyzer = ScopeAnalyzer(model)
