@@ -76,7 +76,7 @@ class Storage:
         filenames = []
 
         for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
-            if path.is_file() and path.name.endswith(".py"):
+            if path.is_file():
                 if path.name not in existing_filenames:
                     with open(path, "r", encoding="utf-8") as file:
                         texts.append(file.read())
@@ -146,7 +146,8 @@ class Storage:
 
     def _perform_similarity_boost(self, filename, query):
         boost = 0.0
-        base_filename = filename.replace(".py", "")
+        file_type = filename[:len(filename) - 3]
+        base_filename = filename.replace(f"{file_type}", "")
         query_lower = query.lower()
 
         filename_boost_exact = float(os.getenv("FILENAME_BOOST_EXACT", "0.3"))
@@ -177,7 +178,7 @@ class Storage:
         changed_metadata = []
 
         for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
-            if path.is_file() and path.name.endswith(".py"):
+            if path.is_file():
                 with open(path, "r", encoding="utf-8") as file:
                     content = file.read()
 

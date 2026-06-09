@@ -29,7 +29,7 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 
 [x] fix identation when applying patches
 
-[ ] create support for multiple changes in a single prompt
+[x] create support for multiple changes in a single prompt
 
 [ ] create multi-file support
 

@@ -189,10 +189,6 @@ class CodeWorkflow:
 
                 for chunk in code_chunks:
                     if chunk["filename"] == output.filename:
-                        # Ensure indentation is preserved
-                        # TODO: already handling at the prompt phase
-                        # cleaned_code = self._fix_indentation(cleaned_code, chunk['code'])
-
                         changes.append({"chunk": chunk, "updated_code": cleaned_code})
                         break
 
@@ -280,28 +276,6 @@ class CodeWorkflow:
 
         except Exception as e:
             return f"Error getting function signatures: {str(e)}"
-
-    def _infer_filename_from_query(self, query: str) -> str:
-        """Infer target filename from the query text"""
-        import re
-
-        # Look for explicit filename mentions
-        filename_patterns = [
-            r"in\s+(\w+\.py)",  # "in main.py"
-            r"(\w+\.py)",  # "main.py"
-            r"(\w+)\s+file",  # "main file"
-            r"(\w+)\s+module",  # "storage module"
-        ]
-
-        for pattern in filename_patterns:
-            match = re.search(pattern, query, re.IGNORECASE)
-            if match:
-                filename = match.group(1)
-                if not filename.endswith(".py"):
-                    filename += ".py"
-                return filename
-
-        return None
 
     def _clean_code_response(self, code: str) -> str:
         """Clean AI response to extract just the code"""
