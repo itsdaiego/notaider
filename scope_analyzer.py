@@ -26,6 +26,8 @@ class ScopeAnalysis(BaseModel):
     )
 
 
+# TODO: remove target_function instructions we need to boost
+# score after retrieval instead of relying on the LLM provider
 class ScopeAnalyzer:
     def __init__(self, model: str):
         self.model = model
@@ -40,7 +42,7 @@ class ScopeAnalyzer:
 - Functions: {codebase_stats['chunks_by_type'].get('function', 0)}
 - Classes: {codebase_stats['chunks_by_type'].get('class', 0)}
 - Files and their chunk counts:
-{chr(10).join(f'  - {f}: {c} chunks' for f, c in codebase_stats['chunks_by_file'].items())}
+{"\n".join(f'  - {f}: {c} chunks' for f, c in codebase_stats['chunks_by_file'].items())}
 
 IMPORTANT: Use these REAL numbers to decide suggested_top_k:
 - If targeting a specific file, cap top_k to that file's chunk count
@@ -100,7 +102,7 @@ Query: "add print statement to get_todo"
 Query: "update get_todo and delete_todo to use async"
 → scope_type: "multiple", target_functions: ["get_todo", "delete_todo"], suggested_top_k: 4
 
-Query: "add docstrings to every function in storage.py" (storage.py has 12 chunks)
+Query: "add docstrings o every function in storage.py" (storage.py has 12 chunks)
 → scope_type: "file", target_file: "storage.py", suggested_top_k: 12
 
 Query: "refactor all error handling across the codebase" (50 total chunks)

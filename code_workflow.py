@@ -1,13 +1,14 @@
 import difflib
 import os
+from typing import Any
 
 import numpy as np
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
-from pydantic_ai import Agent
+from pydantic_ai import Agent, AgentRunResult
 
 from colors import Colors
-from scope_analyzer import ScopeAnalyzer
+from scope_analyzer import ScopeAnalysis, ScopeAnalyzer
 from storage import Storage
 
 load_dotenv()
@@ -33,6 +34,99 @@ class CodeWorkflow:
                 print(f"{Colors.GREEN}Code chunks ready!")
         except Exception as e:
             print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
+
+    def _build_chunk_context(self, code_chunks) -> list[str]:
+        context_chunks = []
+        for i, c in enumerate(code_chunks, 1):
+            ce_score = c.get("cross_encoder_score", 0)
+            context_chunks.append(
+                f"Chunk #{i} (relevance: {ce_score:.3f}, HIGHEST MATCH)"
+                if i == 1
+                else f"Chunk #{i} (relevance: {ce_score:.3f})"
+            )
+            context_chunks.append(f"  - Type: {c['type']}")
+            context_chunks.append(f"  - Name: {c['name']}")
+            context_chunks.append(f"  - File: {c['filename']}")
+
+            # Calculate indentation level for emphasis
+            code_lines = c["code"].split("\n")
+            first_line = code_lines[0] if code_lines else ""
+            indent_spaces = len(first_line) - len(first_line.lstrip(" "))
+
+            context_chunks.append(
+                f"  - Indentation: {indent_spaces} spaces (MUST BE PRESERVED EXACTLY)"
+            )
+            context_chunks.append(f"  - Code:\n{c['code']}")
+            context_chunks.append("")
+
+        return context_chunks
+
+    async def _adjust_instructions(self, query: str, scope: ScopeAnalysis, context_chunks: list[str]) -> AgentRunResult[list[CodeWorkflowOutput]]:
+        if scope.scope_type in ["file", "project", "all"]:
+            scope_instruction = f"""
+        SCOPE: The user wants to modify {scope.intent_description}.
+        This is a BROAD scope ({scope.scope_type}) - you MUST return modifications for ALL {len(code_chunks)} chunks provided below.
+        Each chunk should receive the modification requested by the user.
+        """
+        elif scope.scope_type == "multiple":
+            scope_instruction = f"""
+        SCOPE: The user wants to modify {scope.intent_description}.
+        This is a MULTIPLE scope - modify the chunks that best match the user's specific targets.
+        Target functions/classes: {', '.join(scope.target_functions) if scope.target_functions else 'infer from query'}
+        You should return modifications for MULTIPLE chunks (not just one).
+        """
+        else:
+            scope_instruction = f"""
+        SCOPE: The user wants to modify {scope.intent_description}.
+        This is a SINGLE scope - only modify the chunk that best matches the user's request (typically Chunk #1).
+        """
+
+        transformation_prompt = f"""
+        Here are the code chunks ranked by relevance to the user's request.
+
+        {"\n".join(context_chunks)}
+
+        User request: {query}
+
+        {scope_instruction}
+
+        CRITICAL INSTRUCTIONS:
+        1. Read the SCOPE section above carefully to understand how many chunks to modify
+        2. If modifying multiple chunks, return one CodeWorkflowOutput entry for EACH chunk
+        3. If modifying a single chunk, return only ONE CodeWorkflowOutput entry
+
+        For EACH chunk that needs modification, return a CodeWorkflowOutput with:
+        - code: the transformed code for that specific chunk
+        - filename: the filename of that chunk (e.g., "todo.py")
+        - chunk_name: the name of the function/class being modified (e.g., "get_todo", "TodoItem")
+
+        CRITICAL INDENTATION RULES (FAILURE TO FOLLOW WILL BREAK THE CODE):
+        1. Count the leading spaces in the FIRST line of the original code - this is the BASE indentation
+        2. Your output MUST start with EXACTLY the same number of leading spaces
+        3. Every line in your output must maintain the EXACT same indentation structure as the original
+        4. DO NOT strip, reduce, or modify any leading whitespace
+        5. If the original first line has N spaces, your first line MUST have N spaces
+        6. Example: If original starts with "    def" (4 spaces), your output MUST start with "    def" (4 spaces)
+
+        WHAT TO MODIFY:
+        - Add/remove/modify the code logic as requested
+        - Keep all indentation exactly as it appears in the original
+        """
+
+        ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
+        structured_agent = Agent(ai_model, output_type=list[CodeWorkflowOutput], retries=5)
+        try:
+            response = await structured_agent.run(transformation_prompt)
+        except ValidationError as ve:
+            raise Exception(f"Error in AI response validation: {ve}")
+        except Exception as e:
+            raise Exception(f"Error in AI response: {e}")
+
+        if not response.output:
+            raise Exception("No changes generated by AI")
+
+        return response
+
 
     async def perform_diff(self, query: str) -> str:
         try:
@@ -83,6 +177,7 @@ class CodeWorkflow:
                 self.storage.store_code_chunks(filename)
 
             print(f"{Colors.GREEN}📝 Selected {len(code_chunks)} chunk(s) for modification:")
+
             for i, chunk in enumerate(code_chunks, 1):
                 ce_score = chunk.get("cross_encoder_score", 0)
                 print(
@@ -92,96 +187,9 @@ class CodeWorkflow:
 
             changes = []
 
-            # Build detailed chunk context with rankings
-            chunk_context = []
-            for i, c in enumerate(code_chunks, 1):
-                ce_score = c.get("cross_encoder_score", 0)
-                chunk_context.append(
-                    f"Chunk #{i} (relevance: {ce_score:.3f}, HIGHEST MATCH)"
-                    if i == 1
-                    else f"Chunk #{i} (relevance: {ce_score:.3f})"
-                )
-                chunk_context.append(f"  - Type: {c['type']}")
-                chunk_context.append(f"  - Name: {c['name']}")
-                chunk_context.append(f"  - File: {c['filename']}")
+            context_chunks = self._build_chunk_context(code_chunks)
 
-                # Calculate indentation level for emphasis
-                code_lines = c["code"].split("\n")
-                first_line = code_lines[0] if code_lines else ""
-                indent_spaces = len(first_line) - len(first_line.lstrip(" "))
-
-                chunk_context.append(
-                    f"  - Indentation: {indent_spaces} spaces (MUST BE PRESERVED EXACTLY)"
-                )
-                chunk_context.append(f"  - Code:\n{c['code']}")
-                chunk_context.append("")
-
-            # Adjust instructions based on scope
-            if scope.scope_type in ["file", "project", "all"]:
-                scope_instruction = f"""
-            SCOPE: The user wants to modify {scope.intent_description}.
-            This is a BROAD scope ({scope.scope_type}) - you MUST return modifications for ALL {len(code_chunks)} chunks provided below.
-            Each chunk should receive the modification requested by the user.
-            """
-            elif scope.scope_type == "multiple":
-                scope_instruction = f"""
-            SCOPE: The user wants to modify {scope.intent_description}.
-            This is a MULTIPLE scope - modify the chunks that best match the user's specific targets.
-            Target functions/classes: {', '.join(scope.target_functions) if scope.target_functions else 'infer from query'}
-            You should return modifications for MULTIPLE chunks (not just one).
-            """
-            else:
-                scope_instruction = f"""
-            SCOPE: The user wants to modify {scope.intent_description}.
-            This is a SINGLE scope - only modify the chunk that best matches the user's request (typically Chunk #1).
-            """
-
-            transformation_prompt = f"""
-            Here are the code chunks ranked by relevance to the user's request.
-
-            {chr(10).join(chunk_context)}
-
-            User request: {query}
-
-            {scope_instruction}
-
-            CRITICAL INSTRUCTIONS:
-            1. Read the SCOPE section above carefully to understand how many chunks to modify
-            2. If modifying multiple chunks, return one CodeWorkflowOutput entry for EACH chunk
-            3. If modifying a single chunk, return only ONE CodeWorkflowOutput entry
-
-            For EACH chunk that needs modification, return a CodeWorkflowOutput with:
-            - code: the transformed code for that specific chunk
-            - filename: the filename of that chunk (e.g., "todo.py")
-            - chunk_name: the name of the function/class being modified (e.g., "get_todo", "TodoItem")
-
-            CRITICAL INDENTATION RULES (FAILURE TO FOLLOW WILL BREAK THE CODE):
-            1. Count the leading spaces in the FIRST line of the original code - this is the BASE indentation
-            2. Your output MUST start with EXACTLY the same number of leading spaces
-            3. Every line in your output must maintain the EXACT same indentation structure as the original
-            4. DO NOT strip, reduce, or modify any leading whitespace
-            5. If the original first line has N spaces, your first line MUST have N spaces
-            6. Example: If original starts with "    def" (4 spaces), your output MUST start with "    def" (4 spaces)
-
-            WHAT TO MODIFY:
-            - Add/remove/modify the code logic as requested
-            - Keep all indentation exactly as it appears in the original
-
-            IMPORTANT: If the user request only targets one specific function/class, only return ONE entry for that function/class.
-            """
-
-            # Create a temporary agent with structured output for this specific
-            ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
-            structured_agent = Agent(ai_model, output_type=list[CodeWorkflowOutput], retries=5)
-            try:
-                response = await structured_agent.run(transformation_prompt)
-            except ValidationError as ve:
-                return f"Error in AI response validation: {ve}"
-            except Exception as e:
-                return f"Error in AI response: {e}"
-
-            if not response.output:
-                return "No changes generated by AI"
+            response = await self._adjust_instructions(query, scope, context_chunks)
 
             # Filter changes if filename is mentioned in query
             for output in response.output:
