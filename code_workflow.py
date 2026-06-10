@@ -196,7 +196,7 @@ class CodeWorkflow:
                 cleaned_code = self._clean_code_response(str(output.code))
 
                 for chunk in code_chunks:
-                    if chunk["filename"] == output.filename:
+                    if chunk["filename"] == output.filename and chunk["name"] == output.chunk_name:
                         changes.append({"chunk": chunk, "updated_code": cleaned_code})
                         break
 
