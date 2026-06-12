@@ -86,11 +86,11 @@ Guidelines:
             context = ""
             if results:
                 for i, result in enumerate(results, 1):
-                    if result['similarity'] > similarity_threshold or i == 1:
-                        print(f'Including {result["filename"]} (similarity: {result["similarity"]:.3f})')
-                        print(f'Result length: {len(result["content"])}')
-                        context += f"\n{i}: {result['filename']} (similarity: {result['similarity']:.2f}):\n"
-                        context += f"{result['content'][:MAX_FILE_CHAR_SIZE]}\n"
+                    if result.similarity > similarity_threshold or i == 1:
+                        print(f'Including {result.filename} (similarity: {result.similarity:.3f})')
+                        print(f'Result length: {len(result.content)}')
+                        context += f"\n{i}: {result.filename} (similarity: {result.similarity:.2f}):\n"
+                        context += f"{result.content[:MAX_FILE_CHAR_SIZE]}\n"
 
             if context:
                 user_message = f"User query: {content}\n\nRelevant file content:{context}\n\nPlease analyze the code and provide a direct answer to the user's query using the provided context."

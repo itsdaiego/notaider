@@ -1,6 +1,6 @@
 import difflib
 import os
-from typing import Any
+from dataclasses import dataclass
 
 import numpy as np
 from dotenv import load_dotenv
@@ -9,7 +9,7 @@ from pydantic_ai import Agent, AgentRunResult
 
 from colors import Colors
 from scope_analyzer import ScopeAnalysis, ScopeAnalyzer
-from storage import Storage
+from storage import SearchedCodeChunk, Storage
 
 load_dotenv()
 
@@ -18,6 +18,12 @@ class CodeWorkflowOutput(BaseModel):
     code: str
     filename: str
     chunk_name: str
+
+
+@dataclass
+class CodeChange:
+    chunk: SearchedCodeChunk
+    updated_code: str
 
 
 class CodeWorkflow:
@@ -35,7 +41,7 @@ class CodeWorkflow:
         except Exception as e:
             print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
 
-    def _build_chunk_context(self, code_chunks) -> list[str]:
+    def _build_chunk_context(self, code_chunks: list[SearchedCodeChunk]) -> list[str]:
         context_chunks = []
         for i, c in enumerate(code_chunks, 1):
             ce_score = c.get("cross_encoder_score", 0)
@@ -140,11 +146,11 @@ class CodeWorkflow:
             scope = await self.scope_analyzer.analyze(query, codebase_stats=codebase_stats)
 
             effective_top_k = scope.suggested_top_k
-            if scope.target_file and scope.target_file in codebase_stats["chunks_by_file"]:
-                file_chunk_count = codebase_stats["chunks_by_file"][scope.target_file]
+            if scope.target_file and scope.target_file in codebase_stats.chunks_by_file:
+                file_chunk_count = codebase_stats.chunks_by_file[scope.target_file]
                 effective_top_k = min(scope.suggested_top_k, file_chunk_count)
-            elif codebase_stats["total_chunks"] > 0:
-                effective_top_k = min(scope.suggested_top_k, codebase_stats["total_chunks"])
+            elif codebase_stats.total_chunks > 0:
+                effective_top_k = min(scope.suggested_top_k, codebase_stats.total_chunks)
 
             print(f"{Colors.GREEN}📊 Scope Analysis:")
             print(f"{Colors.GREEN}  - Type: {scope.scope_type}")
@@ -185,22 +191,20 @@ class CodeWorkflow:
                     f"(bi: {chunk['similarity']:.3f}, ce: {ce_score:.3f})"
                 )
 
-            changes = []
+            changes: list[CodeChange] = []
 
             context_chunks = self._build_chunk_context(code_chunks)
 
             response = await self._adjust_instructions(query, scope, context_chunks)
 
-            # Filter changes if filename is mentioned in query
             for output in response.output:
                 cleaned_code = self._clean_code_response(str(output.code))
 
                 for chunk in code_chunks:
                     if chunk["filename"] == output.filename and chunk["name"] == output.chunk_name:
-                        changes.append({"chunk": chunk, "updated_code": cleaned_code})
+                        changes.append(CodeChange(chunk=chunk, updated_code=cleaned_code))
                         break
 
-            # Generate combined diff
             print(f"{Colors.GREEN}📝 Generating diff preview...")
 
             print(f"{Colors.GREEN}{'='*50}")
@@ -210,8 +214,8 @@ class CodeWorkflow:
             target_files = set()
 
             for change in changes:
-                chunk = change["chunk"]
-                updated_code = change["updated_code"]
+                chunk = change.chunk
+                updated_code = change.updated_code
                 target_files.add(chunk["filename"])
 
                 diff = self._generate_diff(chunk["code"], updated_code, chunk["filename"])
@@ -347,11 +351,11 @@ class CodeWorkflow:
 
         return "\n".join(fixed_lines)
 
-    def _apply_change(self, change: dict, target_files: set[str]) -> None:
+    def _apply_change(self, change: CodeChange, target_files: set[str]) -> None:
         """Apply a single change to a file"""
         try:
-            chunk = change["chunk"]
-            updated_code = change["updated_code"]
+            chunk = change.chunk
+            updated_code = change.updated_code
 
             file_path = os.path.join(self.storage.app_dir, chunk["filename"])
             with open(file_path, "r") as f:

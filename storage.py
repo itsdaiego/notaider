@@ -2,13 +2,52 @@ import ast
 import os
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast
 
 import faiss
 import numpy as np
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
+
+
+class ParsedCodeChunk(TypedDict):
+    type: str
+    name: str
+    lineno: int
+    end_lineno: int
+    code: str
+    filepath: str
+
+
+class CodeChunk(TypedDict):
+    chunk_id: str
+    filename: str
+    type: str
+    name: str
+    lineno: int
+    end_lineno: int
+    code: str
+
+
+class SearchedCodeChunk(CodeChunk, total=False):
+    similarity: float
+    cross_encoder_score: float
+
+
+@dataclass
+class CodebaseStats:
+    total_chunks: int
+    chunks_by_file: dict[str, int]
+    chunks_by_type: dict[str, int]
+
+
+@dataclass
+class SearchResult:
+    filename: str
+    content: str
+    similarity: float
 
 load_dotenv()
 
@@ -91,7 +130,7 @@ class Storage:
 
         return all_filenames, filenames
 
-    def search_content(self, query, top_k=5):
+    def search_content(self, query, top_k=5) -> list[SearchResult]:
         self._ensure_dirs()
 
         index_path = os.path.join(self.storage_dir, "filenames_index.faiss")
@@ -103,19 +142,10 @@ class Storage:
         query_embedding = self.model.encode([query], convert_to_numpy=True)
         distances, indices = index.search(query_embedding, top_k)
 
-        results = []
+        results: list[SearchResult] = []
 
-        # converts distance to similarities
-        # for example:
-        # distance = 4 -> 1 / (1 + 4) = 0.2
-        # 0.2 is the similarity score, the higher the distance, the lower will the similarity score be.
         similarities = 1 / (1 + distances[0])
 
-        # zip is used to combine the most similar indices with their matching similarity scores
-        # this creates a structure like:
-        # indices = [0, 1, 2]
-        # similarities = [0.8, 0.6, 0.5]
-        # results = [(0, 0.8), (1, 0.6), (2, 0.5)]
         for idx, similarity in zip(indices[0], similarities):
             filename = filenames[idx]
             file_path = os.path.join(self.app_dir, filename)
@@ -124,16 +154,13 @@ class Storage:
                 with open(file_path, "r") as f:
                     content = f.read().strip()
 
-                    # increase similarity if filename is mentioned in initial query
                     similarity_boost = self._perform_similarity_boost(filename, query)
-                    similarity = min(similarity + similarity_boost, 1.0)  # Cap at 1.0
+                    similarity = min(similarity + similarity_boost, 1.0)
 
                     if similarity < 0.5:
                         continue
 
-                    results.append(
-                        {"filename": filename, "content": content, "similarity": similarity}
-                    )
+                    results.append(SearchResult(filename=filename, content=content, similarity=similarity))
             except FileNotFoundError:
                 print(f"Warning: File {filename} not found in {self.app_dir}")
                 continue
@@ -141,7 +168,7 @@ class Storage:
                 print(f"Something went wrong: {e}")
                 continue
 
-        results.sort(key=lambda item: item["similarity"], reverse=True)
+        results.sort(key=lambda item: item.similarity, reverse=True)
         return results
 
     def _perform_similarity_boost(self, filename, query):
@@ -234,7 +261,7 @@ class Storage:
 
         return all_metadata, changed_metadata
 
-    def _parse_code_chunks(self, code: str, filepath: str) -> Iterator[dict[str, Any]]:
+    def _parse_code_chunks(self, code: str, filepath: str) -> Iterator[ParsedCodeChunk]:
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
@@ -268,42 +295,34 @@ class Storage:
             return []
 
     def search_code_chunks(
-        self, query: str, top_k: int = 5, return_all_scores: bool = False, rerank: bool = False
-    ) -> list[dict[str, Any]] | list[float]:
+        self, query: str, top_k: int = 5, rerank: bool = False
+    ) -> list[SearchedCodeChunk]:
         self._ensure_dirs()
 
         (chunks_index, metadata) = self.load_index("chunks_index.faiss", "chunks_metadata.npy", True)
+        metadata = cast(list[CodeChunk], metadata)
 
         search_k = min(max(top_k * 3, 15), len(metadata))
 
         query_embedding = self.model.encode([query], convert_to_numpy=True)
         distances, indices = chunks_index.search(query_embedding, search_k)
 
-        results = []
+        results: list[SearchedCodeChunk] = []
         similarities = 1 / (1 + distances[0])
 
         for idx, similarity in zip(indices[0], similarities):
             if idx < len(metadata):
-                results.append(
-                    {
-                        **metadata[idx],
-                        "similarity": similarity,
-                    }
-                )
+                chunk: SearchedCodeChunk = {**metadata[idx], "similarity": float(similarity)}  # type: ignore[misc]
+                results.append(chunk)
 
         if rerank and results:
             results = self.rerank_results(query, results)
 
-        if return_all_scores:
-            score_key = "cross_encoder_score" if rerank else "similarity"
-            all_scores = [r.get(score_key, r["similarity"]) for r in results]
-            return results[:top_k], all_scores
-
         return results[:top_k]
 
     def rerank_results(
-        self, query: str, results: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+        self, query: str, results: list[SearchedCodeChunk]
+    ) -> list[SearchedCodeChunk]:
         if not results:
             return results
 
@@ -316,13 +335,13 @@ class Storage:
         results.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
         return results
 
-    def find_functions_by_name(self, function_name: str) -> list[dict[str, Any]]:
+    def find_functions_by_name(self, function_name: str) -> list[CodeChunk]:
         chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
 
         if not os.path.exists(chunks_metadata_path):
             return []
 
-        metadata = np.load(chunks_metadata_path, allow_pickle=True).tolist()
+        metadata = cast(list[CodeChunk], np.load(chunks_metadata_path, allow_pickle=True).tolist())
 
         matching_functions = []
         for chunk_meta in metadata:
@@ -331,17 +350,17 @@ class Storage:
 
         return matching_functions
 
-    def get_codebase_stats(self) -> dict[str, Any]:
+    def get_codebase_stats(self) -> CodebaseStats:
         chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
 
         if not os.path.exists(chunks_metadata_path):
-            return {
-                "total_chunks": 0,
-                "chunks_by_file": {},
-                "chunks_by_type": {"function": 0, "class": 0},
-            }
+            return CodebaseStats(
+                total_chunks=0,
+                chunks_by_file={},
+                chunks_by_type={"function": 0, "class": 0},
+            )
 
-        metadata: list[dict[str, Any]] = np.load(chunks_metadata_path, allow_pickle=True).tolist()
+        metadata = cast(list[CodeChunk], np.load(chunks_metadata_path, allow_pickle=True).tolist())
 
         chunks_by_file: dict[str, int] = {}
         chunks_by_type: dict[str, int] = {"function": 0, "class": 0}
@@ -353,8 +372,8 @@ class Storage:
             if chunk_type in chunks_by_type:
                 chunks_by_type[chunk_type] += 1
 
-        return {
-            "total_chunks": len(metadata),
-            "chunks_by_file": chunks_by_file,
-            "chunks_by_type": chunks_by_type,
-        }
+        return CodebaseStats(
+            total_chunks=len(metadata),
+            chunks_by_file=chunks_by_file,
+            chunks_by_type=chunks_by_type,
+        )

@@ -3,6 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
+from storage import CodebaseStats
+
 
 class ScopeAnalysis(BaseModel):
     scope_type: Literal["single", "multiple", "file", "project", "all"] = Field(
@@ -33,16 +35,16 @@ class ScopeAnalyzer:
         self.model = model
         self.agent = Agent(self.model, output_type=ScopeAnalysis, retries=3)
 
-    async def analyze(self, query: str, codebase_stats: dict | None = None) -> ScopeAnalysis:
+    async def analyze(self, query: str, codebase_stats: CodebaseStats | None = None) -> ScopeAnalysis:
         stats_context = ""
-        if codebase_stats and codebase_stats.get("total_chunks", 0) > 0:
+        if codebase_stats and codebase_stats.total_chunks > 0:
             stats_context = f"""
 **CODEBASE STATISTICS (use these to inform your suggested_top_k):**
-- Total chunks in codebase: {codebase_stats['total_chunks']}
-- Functions: {codebase_stats['chunks_by_type'].get('function', 0)}
-- Classes: {codebase_stats['chunks_by_type'].get('class', 0)}
+- Total chunks in codebase: {codebase_stats.total_chunks}
+- Functions: {codebase_stats.chunks_by_type.get('function', 0)}
+- Classes: {codebase_stats.chunks_by_type.get('class', 0)}
 - Files and their chunk counts:
-{"\n".join(f'  - {f}: {c} chunks' for f, c in codebase_stats['chunks_by_file'].items())}
+{"\n".join(f'  - {f}: {c} chunks' for f, c in codebase_stats.chunks_by_file.items())}
 
 IMPORTANT: Use these REAL numbers to decide suggested_top_k:
 - If targeting a specific file, cap top_k to that file's chunk count
