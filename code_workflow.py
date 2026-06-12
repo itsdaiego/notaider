@@ -14,6 +14,23 @@ from storage import SearchedCodeChunk, Storage
 load_dotenv()
 
 
+def _colorize_diff(diff: str) -> str:
+    """Colorize unified diff output with green/red shading."""
+    lines = []
+    for line in diff.splitlines():
+        if line.startswith('+') and not line.startswith('+++'):
+            lines.append(f"{Colors.DIFF_ADD}{line}{Colors.RESET}")
+        elif line.startswith('-') and not line.startswith('---'):
+            lines.append(f"{Colors.DIFF_DEL}{line}{Colors.RESET}")
+        elif line.startswith('@@'):
+            lines.append(f"{Colors.DIFF_META}{line}{Colors.RESET}")
+        elif line.startswith('+++') or line.startswith('---'):
+            lines.append(f"{Colors.HEADER}{line}{Colors.RESET}")
+        else:
+            lines.append(f"{Colors.MUTED}{line}{Colors.RESET}")
+    return '\n'.join(lines)
+
+
 class CodeWorkflowOutput(BaseModel):
     code: str
     filename: str
@@ -36,10 +53,10 @@ class CodeWorkflow:
         try:
             chunks_index_path = os.path.join(self.storage.storage_dir, "chunks_index.faiss")
             if not os.path.exists(chunks_index_path):
-                print(f"{Colors.GREEN}Initializing code chunks database...")
-                print(f"{Colors.GREEN}Code chunks ready!")
+                print(f"{Colors.INFO}Initializing code chunks database...")
+                print(f"{Colors.SUCCESS}Code chunks ready!")
         except Exception as e:
-            print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
+            print(f"{Colors.MUTED}Note: Could not initialize chunks database: {e}")
 
     def _build_chunk_context(self, code_chunks: list[SearchedCodeChunk]) -> list[str]:
         context_chunks = []
@@ -138,11 +155,11 @@ class CodeWorkflow:
         try:
             self._check_code_chunks()
 
-            print(f"{Colors.GREEN}🔍 Processing query...")
+            print(f"{Colors.INFO}🔍 Processing query...")
 
             codebase_stats = self.storage.get_codebase_stats()
 
-            print(f"{Colors.GREEN}🤖 Analyzing query scope...")
+            print(f"{Colors.INFO}🤖 Analyzing query scope...")
             scope = await self.scope_analyzer.analyze(query, codebase_stats=codebase_stats)
 
             effective_top_k = scope.suggested_top_k
@@ -152,22 +169,22 @@ class CodeWorkflow:
             elif codebase_stats.total_chunks > 0:
                 effective_top_k = min(scope.suggested_top_k, codebase_stats.total_chunks)
 
-            print(f"{Colors.GREEN}📊 Scope Analysis:")
-            print(f"{Colors.GREEN}  - Type: {scope.scope_type}")
-            print(f"{Colors.GREEN}  - Confidence: {scope.confidence:.2f}")
-            print(f"{Colors.GREEN}  - Intent: {scope.intent_description}")
+            print(f"{Colors.HEADER}📊 Scope Analysis:")
+            print(f"{Colors.INFO}  - Type: {scope.scope_type}")
+            print(f"{Colors.INFO}  - Confidence: {scope.confidence:.2f}")
+            print(f"{Colors.INFO}  - Intent: {scope.intent_description}")
             if scope.target_file:
-                print(f"{Colors.GREEN}  - Target File: {scope.target_file}")
+                print(f"{Colors.MUTED}  - Target File: {scope.target_file}")
             if scope.target_functions:
-                print(f"{Colors.GREEN}  - Target Functions: {', '.join(scope.target_functions)}")
+                print(f"{Colors.MUTED}  - Target Functions: {', '.join(scope.target_functions)}")
             print(
-                f"{Colors.GREEN}  - Effective Chunks: {effective_top_k} (suggested: {scope.suggested_top_k})"
+                f"{Colors.INFO}  - Effective Chunks: {effective_top_k} (suggested: {scope.suggested_top_k})"
             )
 
             if scope.confidence < 0.7:
                 return f"Confidence is low, skipping diff apply operation: {scope.confidence:.2f}"
 
-            print(f"{Colors.GREEN}🔎 Retrieving and reranking code chunks...")
+            print(f"{Colors.INFO}🔎 Retrieving and reranking code chunks...")
 
             code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True)
 
@@ -182,12 +199,12 @@ class CodeWorkflow:
             for filename in {chunk["filename"] for chunk in code_chunks}:
                 self.storage.store_code_chunks(filename)
 
-            print(f"{Colors.GREEN}📝 Selected {len(code_chunks)} chunk(s) for modification:")
+            print(f"{Colors.HEADER}📝 Selected {len(code_chunks)} chunk(s) for modification:")
 
             for i, chunk in enumerate(code_chunks, 1):
                 ce_score = chunk.get("cross_encoder_score", 0)
                 print(
-                    f"{Colors.GREEN}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} "
+                    f"{Colors.MUTED}  {i}. {chunk['type']} '{chunk['name']}' in {chunk['filename']} "
                     f"(bi: {chunk['similarity']:.3f}, ce: {ce_score:.3f})"
                 )
 
@@ -205,11 +222,11 @@ class CodeWorkflow:
                         changes.append(CodeChange(chunk=chunk, updated_code=cleaned_code))
                         break
 
-            print(f"{Colors.GREEN}📝 Generating diff preview...")
+            print(f"{Colors.INFO}📝 Generating diff preview...")
 
-            print(f"{Colors.GREEN}{'='*50}")
-            print(f"{Colors.GREEN}PROPOSED CHANGES")
-            print(f"{Colors.GREEN}{'='*50}")
+            print(f"{Colors.HEADER}{'='*50}")
+            print(f"{Colors.HEADER}PROPOSED CHANGES")
+            print(f"{Colors.HEADER}{'='*50}")
 
             target_files = set()
 
@@ -220,20 +237,20 @@ class CodeWorkflow:
 
                 diff = self._generate_diff(chunk["code"], updated_code, chunk["filename"])
 
-                print(f"{Colors.GREEN}File: {chunk['filename']}")
+                print(f"{Colors.HEADER}File: {Colors.MUTED}{chunk['filename']}")
                 print(
-                    f"{Colors.GREEN}Target: {chunk['type']} '{chunk['name']}' (lines {chunk['lineno']}-{chunk['end_lineno']})"
+                    f"{Colors.HEADER}Target: {Colors.MUTED}{chunk['type']} '{chunk['name']}' (lines {chunk['lineno']}-{chunk['end_lineno']})"
                 )
-                print(f"{Colors.GREEN}Diff:")
-                print(diff)
-                print(f"{Colors.GREEN}{'-'*30}")
+                print(f"{Colors.HEADER}Diff:")
+                print(_colorize_diff(diff))
+                print(f"{Colors.HEADER}{'-'*30}")
 
-                if input("Apply this change? (y/n): ").strip().lower() != "y":
+                if input(f"{Colors.PROMPT}Apply this change? (y/n): {Colors.RESET}").strip().lower() != "y":
                     continue
 
-                print(f"{Colors.GREEN}{'='*50}")
-                print(f"{Colors.GREEN}Files to be modified: {', '.join(target_files)}")
-                print(f"{Colors.GREEN}{'='*50}")
+                print(f"{Colors.HEADER}{'='*50}")
+                print(f"{Colors.INFO}Files to be modified: {Colors.MUTED}{', '.join(target_files)}")
+                print(f"{Colors.HEADER}{'='*50}")
 
                 self._apply_change(change, target_files)
 
@@ -272,17 +289,17 @@ class CodeWorkflow:
             functions = [chunk for chunk in metadata if chunk["type"] == "function"]
             classes = [chunk for chunk in metadata if chunk["type"] == "class"]
 
-            result = f"{Colors.GREEN}Code Structure:\n"
+            result = f"{Colors.HEADER}Code Structure:\n"
 
             if functions:
-                result += f"\n{Colors.GREEN}Functions:\n"
+                result += f"\n{Colors.HEADER}Functions:\n"
                 for func in functions:
-                    result += f"{Colors.GREEN}  - {func['name']} (line {func['lineno']}) in {func['filename']}\n"
+                    result += f"{Colors.MUTED}  - {func['name']} (line {func['lineno']}) in {func['filename']}\n"
 
             if classes:
-                result += f"\n{Colors.GREEN}Classes:\n"
+                result += f"\n{Colors.HEADER}Classes:\n"
                 for cls in classes:
-                    result += f"{Colors.GREEN}  - {cls['name']} (line {cls['lineno']}) in {cls['filename']}\n"
+                    result += f"{Colors.MUTED}  - {cls['name']} (line {cls['lineno']}) in {cls['filename']}\n"
 
             return result
 
@@ -375,4 +392,4 @@ class CodeWorkflow:
             for target_file in target_files:
                 self.storage.store_code_chunks(target_file)
         except Exception as e:
-            print(f"Error applying change: {str(e)}")
+            print(f"{Colors.ERROR}Error applying change: {str(e)}{Colors.RESET}")

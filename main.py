@@ -58,7 +58,7 @@ class NotAider:
             if not os.path.exists(chunks_index_path):
                 os.path.join(self.storage.storage_dir, 'chunks_index.faiss')
         except Exception as e:
-            print(f"{Colors.GREEN}Note: Could not initialize chunks database: {e}")
+            print(f"{Colors.MUTED}Note: Could not initialize chunks database: {e}")
 
     async def enhance_prompt(self, content: str) -> str:
         system_prompt = """You are an AI assistant that analyzes code and provides direct answers based on the provided file context.
@@ -146,10 +146,11 @@ async def main():
     completer = WordCompleter(['@ask', '@add', '@code', "@list", 'exit', 'quit'], ignore_case=True, sentence=True)
 
     style = Style.from_dict({
-        'completion-menu.completion': 'bg:#424242 #ffffff',
-        'completion-menu.completion.current': 'bg:#1b5e20 #ffffff bold',
-        'completion-menu': 'bg:#424242',
-        'command': 'bg:#424242 #ffffff',
+        'completion-menu.completion': 'bg:#1a2e1a #87d787',
+        'completion-menu.completion.current': 'bg:#005f00 #00ff87 bold',
+        'completion-menu': 'bg:#1a2e1a',
+        'command': '#00ff87 bold',
+        'prompt': '#00ff87 bold',
     })
 
     session = PromptSession(
@@ -162,18 +163,18 @@ async def main():
 
     _print_logo()
     print()
-    print(f"{Colors.GREEN}Commands:")
-    print(f"{Colors.GREEN}  @ask <prompt>          - Enhance and process prompt")
-    print(f"{Colors.GREEN}  @add <pattern>         - Add files to vector database")
-    print(f"{Colors.GREEN}  @list <request>        - List indexed files")
-    print(f"{Colors.GREEN}  @code <request>        - AI-powered code modification with preview")
-    print(f"{Colors.GREEN}Type 'exit' or press Ctrl+D to quit.")
+    print(f"{Colors.HEADER}Commands:")
+    print(f"{Colors.HEADER}  @ask{Colors.MUTED}   <prompt>   - Enhance and process prompt")
+    print(f"{Colors.HEADER}  @add{Colors.MUTED}   <pattern>  - Add files to vector database")
+    print(f"{Colors.HEADER}  @list{Colors.MUTED}  <request>  - List indexed files")
+    print(f"{Colors.HEADER}  @code{Colors.MUTED}  <request>  - AI-powered code modification with preview")
+    print(f"{Colors.MUTED}Type 'exit' or press Ctrl+D to quit.{Colors.RESET}")
 
     api_key = os.getenv("OPENAI_API_KEY") or ""
 
     while True:
         try:
-            result = await session.prompt_async("notaider> ")
+            result = await session.prompt_async([('class:prompt', 'notaider> ')])
             if result is None:
                 break
             command = result.strip()
@@ -192,26 +193,26 @@ async def main():
             if command.startswith('@ask '):
                 content = command[5:].strip()
                 if not content:
-                    print(f"{Colors.GREEN}Usage: @ask <your prompt>")
+                    print(f"{Colors.MUTED}Usage: @ask <your prompt>")
                     continue
 
                 if not api_key:
-                    print(f"{Colors.GREEN}Error: OPENAI_API_KEY environment variable not set")
-                    print(f"{Colors.GREEN}Please set your API key: export OPENAI_API_KEY='your-key-here'")
+                    print(f"{Colors.ERROR}Error: OPENAI_API_KEY environment variable not set")
+                    print(f"{Colors.MUTED}Please set your API key: export OPENAI_API_KEY='your-key-here'")
                     continue
 
-                print(f"{Colors.GREEN}{'='*29}")
-                print(f"{Colors.GREEN}Enhancing your prompt...")
-                print(f"{Colors.GREEN}{'='*29}")
+                print(f"{Colors.HEADER}{'='*29}")
+                print(f"{Colors.INFO}Enhancing your prompt...")
+                print(f"{Colors.HEADER}{'='*29}")
 
                 try:
                     notaider = NotAider(api_key)
                     enhanced = await notaider.enhance_prompt(content)
 
-                    print(f"{Colors.GREEN}{enhanced}")
+                    print(f"{Colors.INFO}{enhanced}")
 
                 except Exception as e:
-                    print(f"{Colors.GREEN}Error initializing NotAider: {str(e)}")
+                    print(f"{Colors.ERROR}Error initializing NotAider: {str(e)}")
 
             elif command.startswith('@add'):
                 content = str(command[5:].strip())
@@ -219,36 +220,36 @@ async def main():
                 filenames, new_files = storage.store_files(content)
 
                 if not new_files:
-                    print(f"{Colors.GREEN}No files added.")
+                    print(f"{Colors.MUTED}No files added.")
                 else:
-                    print(f"{Colors.GREEN}Files added:")
+                    print(f"{Colors.SUCCESS}Files added:")
                     for file in filenames:
-                        print(f"{Colors.GREEN}{file}")
+                        print(f"{Colors.MUTED}  {file}")
 
             elif command.startswith('@list'):
                 try:
                     notaider = NotAider(api_key=api_key)
                     files = notaider.storage.list_indexed_files()
                     if files:
-                        print(f"{Colors.GREEN}Indexed files:")
+                        print(f"{Colors.HEADER}Indexed files:")
                         for file in files:
-                            print(f"{Colors.GREEN}{file}")
+                            print(f"{Colors.MUTED}  {file}")
                     else:
-                        print(f"{Colors.GREEN}No files indexed yet.")
+                        print(f"{Colors.MUTED}No files indexed yet.")
                 except Exception as e:
-                    print(f"{Colors.GREEN}Error listing files: {str(e)}")
+                    print(f"{Colors.ERROR}Error listing files: {str(e)}")
 
             elif command.startswith('@code '):
                 content = command[6:].strip()
                 if not content:
-                    print(f"{Colors.GREEN}Usage: @code <your request>")
-                    print(f"{Colors.GREEN}Example: @code Add None checks to the add_todo function")
-                    print(f"{Colors.GREEN}Example: @code Add error handling to every function in main.py")
+                    print(f"{Colors.MUTED}Usage: @code <your request>")
+                    print(f"{Colors.MUTED}Example: @code Add None checks to the add_todo function")
+                    print(f"{Colors.MUTED}Example: @code Add error handling to every function in main.py")
                     continue
 
                 if not api_key:
-                    print(f"{Colors.GREEN}Error: OPENAI_API_KEY environment variable not set")
-                    print(f"{Colors.GREEN}Please set your API key: export OPENAI_API_KEY='your-key-here'")
+                    print(f"{Colors.ERROR}Error: OPENAI_API_KEY environment variable not set")
+                    print(f"{Colors.MUTED}Please set your API key: export OPENAI_API_KEY='your-key-here'")
                     continue
 
                 try:
@@ -260,18 +261,18 @@ async def main():
                     result_message = await code_workflow.perform_diff(content)
                     print(f"{result_message}" if result_message else "")
                 except Exception as e:
-                    print(f"{Colors.GREEN}Error in code workflow: {str(e)}")
+                    print(f"{Colors.ERROR}Error in code workflow: {str(e)}")
 
             else:
-                print(f"{Colors.GREEN}your command is invalid: {command}")
-                print(f"{Colors.GREEN}Possible commands:")
-                print(f"{Colors.GREEN}  @ask <prompt>          - Enhance and process prompt")
-                print(f"{Colors.GREEN}  @add <pattern>         - Add files to vector database")
-                print(f"{Colors.GREEN}  @code <request>        - AI-powered code modification with preview")
-                print(f"{Colors.GREEN}  exit/quit              - Exit the program")
+                print(f"{Colors.ERROR}Invalid command: {command}")
+                print(f"{Colors.MUTED}Possible commands:")
+                print(f"{Colors.MUTED}  @ask <prompt>   - Enhance and process prompt")
+                print(f"{Colors.MUTED}  @add <pattern>  - Add files to vector database")
+                print(f"{Colors.MUTED}  @code <request> - AI-powered code modification with preview")
+                print(f"{Colors.MUTED}  exit/quit       - Exit the program")
 
         except (KeyboardInterrupt, EOFError):
-            print(f"{Colors.GREEN}Bye!")
+            print(f"{Colors.MUTED}Bye!{Colors.RESET}")
             break
 
 
