@@ -99,9 +99,14 @@ class CodeWorkflow:
         You should return modifications for MULTIPLE chunks (not just one).
         """
         else:
+            target_hint = (
+                f"\n        Target function/class: {', '.join(scope.target_functions)}"
+                if scope.target_functions
+                else ""
+            )
             scope_instruction = f"""
         SCOPE: The user wants to modify {scope.intent_description}.
-        This is a SINGLE scope - only modify the chunk that best matches the user's request (typically Chunk #1).
+        This is a SINGLE scope - only modify the chunk that best matches the user's request (typically Chunk #1).{target_hint}
         """
 
         transformation_prompt = f"""
@@ -186,7 +191,7 @@ class CodeWorkflow:
 
             print(f"{Colors.INFO}🔎 Retrieving and reranking code chunks...")
 
-            code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True)
+            code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True, target_functions=scope.target_functions)
 
             if scope.target_file:
                 code_chunks = [

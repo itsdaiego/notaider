@@ -295,7 +295,7 @@ class Storage:
             return []
 
     def search_code_chunks(
-        self, query: str, top_k: int = 5, rerank: bool = False
+        self, query: str, top_k: int = 5, rerank: bool = False, target_functions: list[str] | None = None
     ) -> list[SearchedCodeChunk]:
         self._ensure_dirs()
 
@@ -316,12 +316,12 @@ class Storage:
                 results.append(chunk)
 
         if rerank and results:
-            results = self.rerank_results(query, results)
+            results = self.rerank_results(query, results, target_functions or [])
 
         return results[:top_k]
 
     def rerank_results(
-        self, query: str, results: list[SearchedCodeChunk]
+        self, query: str, results: list[SearchedCodeChunk], target_functions: list[str]
     ) -> list[SearchedCodeChunk]:
         if not results:
             return results
@@ -329,8 +329,12 @@ class Storage:
         pairs = [[query, chunk["code"]] for chunk in results]
         scores = self.cross_encoder.predict(pairs)
 
+        target_set = set(target_functions)
         for i, chunk in enumerate(results):
-            chunk["cross_encoder_score"] = float(scores[i])
+            score = float(scores[i])
+            if chunk["name"] in target_set:
+                score += 10.0
+            chunk["cross_encoder_score"] = score
 
         results.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
         return results
