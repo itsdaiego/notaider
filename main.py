@@ -204,6 +204,7 @@ async def main():
                 if not new_files:
                     print(f"{Colors.MUTED}No files added.")
                 else:
+                    storage.store_code_chunks(content)
                     print(f"{Colors.SUCCESS}Files added:")
                     for file in filenames:
                         print(f"{Colors.MUTED}  {file}")
