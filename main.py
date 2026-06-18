@@ -61,44 +61,26 @@ class NotAider:
             print(f"{Colors.MUTED}Note: Could not initialize chunks database: {e}")
 
     async def enhance_prompt(self, content: str) -> str:
-        system_prompt = """You are an AI assistant that analyzes code and provides direct answers based on the provided file context.
+        system_prompt = """You are an AI assistant that answers questions about a codebase using provided code context.
 
-When given a user query and relevant file content, your task is to:
-1. First, check if the provided context contains the information needed to answer the query directly
-2. If yes, provide a direct answer using the code content
-3. If no, then enhance the prompt with the available context
+Analyze the code chunks below and give a direct, specific answer to the user's question.
+Reference actual function names, class names, and line numbers from the context.
+Never give vague instructions — use the provided code to answer concretely."""
 
-Guidelines:
-- If the user asks about methods, functions, classes, or specific code elements and the context contains that information, provide a direct code analysis
-- Use the actual code content to answer questions about implementation details
-- When context is available, prioritize answering the question directly over prompt enhancement
-- Only fall back to prompt enhancement when the context doesn't contain the requested information"""
-
-        storage = Storage(
-            storage_dir=os.getenv("STORAGE_DIR", "db"),
-            app_dir=os.getenv("APP_DIR", "app")
-        )
         try:
-            results = storage.search_content(content, top_k=3)
-            MAX_FILE_CHAR_SIZE = 1500
-
-            similarity_threshold = float(os.getenv("SIMILARITY_THRESHOLD", "0.4"))
+            results = self.storage.search_code_chunks(content, top_k=5, rerank=True)
             context = ""
             if results:
-                for i, result in enumerate(results, 1):
-                    if result.similarity > similarity_threshold or i == 1:
-                        print(f'Including {result.filename} (similarity: {result.similarity:.3f})')
-                        print(f'Result length: {len(result.content)}')
-                        context += f"\n{i}: {result.filename} (similarity: {result.similarity:.2f}):\n"
-                        context += f"{result.content[:MAX_FILE_CHAR_SIZE]}\n"
+                for i, chunk in enumerate(results, 1):
+                    ce_score = chunk.get("cross_encoder_score", 0)
+                    print(f'Including {chunk["type"]} \'{chunk["name"]}\' from {chunk["filename"]} (similarity: {chunk["similarity"]:.3f}, ce: {ce_score:.3f})')
+                    context += f"\n{i}: {chunk['filename']} - {chunk['type']} '{chunk['name']}' (line {chunk['lineno']}):\n"
+                    context += f"```\n{chunk['code']}\n```\n"
 
             if context:
-                user_message = f"User query: {content}\n\nRelevant file content:{context}\n\nPlease analyze the code and provide a direct answer to the user's query using the provided context."
+                user_message = f"User query: {content}\n\nRelevant code from the codebase:{context}\n\nAnswer the query using the code above."
             else:
-                # TODO: this shouldnt be needed once we allow for tool calls 
-                # therefore allowing notaider to find additional information
-                # during inference time
-                user_message = f"Please enhance this prompt: {content}"
+                user_message = f"No relevant code found in the index for this query. Answer as best you can: {content}"
 
         except Exception as e:
             print(f"Note: Could not access embeddings database: {str(e)}")
@@ -106,7 +88,7 @@ Guidelines:
 
         try:
             response = await self.client.run(f"{system_prompt}\n\n{user_message}")
-            return str(response)
+            return str(response.output)
         except Exception as e:
             return f"Error enhancing prompt: {str(e)}"
 
