@@ -114,8 +114,8 @@ class Storage:
         texts = []
         filenames = []
 
-        for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
-            if path.is_file():
+        for path in Path(self.app_dir).rglob("*.py"):
+            if path.is_file() and (not match or match in str(path)):
                 if path.name not in existing_filenames:
                     with open(path, "r", encoding="utf-8") as file:
                         texts.append(file.read())
@@ -204,8 +204,8 @@ class Storage:
         changed_chunks_data = []
         changed_metadata = []
 
-        for path in Path(self.app_dir).rglob(f"*{match}*" if match else "*"):
-            if path.is_file():
+        for path in Path(self.app_dir).rglob("*.py"):
+            if path.is_file() and (not match or match in str(path)):
                 with open(path, "r", encoding="utf-8") as file:
                     content = file.read()
 
