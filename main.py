@@ -44,53 +44,46 @@ def _print_logo():
 class NotAider:
     def __init__(self, api_key: str):
         self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
-        self.client = Agent(self.model)
-
         self.storage = Storage(
             storage_dir=os.getenv("STORAGE_DIR", "db"),
             app_dir=os.getenv("APP_DIR", "app")
         )
-        self._ensure_chunks_ready()
+        self.client = self._build_agent()
 
-    def _ensure_chunks_ready(self):
-        try:
-            chunks_index_path = os.path.join(self.storage.storage_dir, 'chunks_index.faiss')
-            if not os.path.exists(chunks_index_path):
-                os.path.join(self.storage.storage_dir, 'chunks_index.faiss')
-        except Exception as e:
-            print(f"{Colors.MUTED}Note: Could not initialize chunks database: {e}")
+    def _build_agent(self) -> Agent:
+        agent = Agent(
+            self.model,
+            system_prompt=(
+                "You are an AI assistant that answers questions about a codebase. "
+                "Use the search_code tool to find relevant code before answering. "
+                "Search multiple times with different queries if needed. "
+                "Reference actual function names, class names, and line numbers. "
+                "Never give vague instructions — answer concretely using the code you find."
+            ),
+        )
+
+        storage = self.storage
+
+        @agent.tool_plain
+        def search_code(query: str) -> str:
+            """Search the codebase for code chunks relevant to a query."""
+            print(f"{Colors.MUTED}  [tool] search_code({query!r})")
+            return storage.format_search_results(query)
+
+        @agent.tool_plain
+        def run_command(command: str) -> str:
+            """Run a bash command in the project directory (e.g. grep, find, cat)."""
+            print(f"{Colors.MUTED}  [tool] run_command({command!r})")
+            return storage.run_command(command)
+
+        return agent
 
     async def enhance_prompt(self, content: str) -> str:
-        system_prompt = """You are an AI assistant that answers questions about a codebase using provided code context.
-
-Analyze the code chunks below and give a direct, specific answer to the user's question.
-Reference actual function names, class names, and line numbers from the context.
-Never give vague instructions — use the provided code to answer concretely."""
-
         try:
-            results = self.storage.search_code_chunks(content, top_k=5, rerank=True)
-            context = ""
-            if results:
-                for i, chunk in enumerate(results, 1):
-                    ce_score = chunk.get("cross_encoder_score", 0)
-                    print(f'Including {chunk["type"]} \'{chunk["name"]}\' from {chunk["filename"]} (similarity: {chunk["similarity"]:.3f}, ce: {ce_score:.3f})')
-                    context += f"\n{i}: {chunk['filename']} - {chunk['type']} '{chunk['name']}' (line {chunk['lineno']}):\n"
-                    context += f"```\n{chunk['code']}\n```\n"
-
-            if context:
-                user_message = f"User query: {content}\n\nRelevant code from the codebase:{context}\n\nAnswer the query using the code above."
-            else:
-                user_message = f"No relevant code found in the index for this query. Answer as best you can: {content}"
-
-        except Exception as e:
-            print(f"Note: Could not access embeddings database: {str(e)}")
-            user_message = f"Please enhance this prompt: {content}"
-
-        try:
-            response = await self.client.run(f"{system_prompt}\n\n{user_message}")
+            response = await self.client.run(content)
             return str(response.output)
         except Exception as e:
-            return f"Error enhancing prompt: {str(e)}"
+            return f"Error: {str(e)}"
 
 
 class CommandLexer(Lexer):

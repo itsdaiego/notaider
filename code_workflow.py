@@ -143,6 +143,19 @@ class CodeWorkflow:
 
         ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
         structured_agent = Agent(ai_model, output_type=list[CodeWorkflowOutput], retries=5)
+
+        @structured_agent.tool_plain
+        def search_code(query: str) -> str:
+            """Search the codebase for code chunks relevant to a query."""
+            print(f"{Colors.MUTED}  [tool] search_code({query!r})")
+            return self.storage.format_search_results(query)
+
+        @structured_agent.tool_plain
+        def run_command(command: str) -> str:
+            """Run a bash command in the project directory (e.g. grep, find, cat)."""
+            print(f"{Colors.MUTED}  [tool] run_command({command!r})")
+            return self.storage.run_command(command)
+
         try:
             response = await structured_agent.run(transformation_prompt)
         except ValidationError as ve:

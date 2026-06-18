@@ -33,6 +33,6 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 
 [ ] create multi-file support
 
-[ ] add tools to the agent (i.e allow grep for not indexed files, create files/dirs etc...)
+[x] add tools to the agent (i.e allow grep for not indexed files, create files/dirs etc...)
 
 

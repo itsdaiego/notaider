@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 from typing import TypedDict, cast
 
 import faiss
@@ -338,6 +339,31 @@ class Storage:
 
         results.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
         return results
+
+    def format_search_results(self, query: str, top_k: int = 5) -> str:
+        """Format code chunk search results as a readable string for LLM consumption."""
+        results = self.search_code_chunks(query, top_k=top_k, rerank=True)
+        if not results:
+            return "No results found."
+        output = ""
+        for i, chunk in enumerate(results, 1):
+            output += f"\n{i}: {chunk['filename']} - {chunk['type']} '{chunk['name']}' (line {chunk['lineno']}):\n"
+            output += f"```\n{chunk['code']}\n```\n"
+        return output
+
+    def run_command(self, command: str) -> str:
+        """Run a shell command scoped to app_dir, return stdout+stderr (max 5000 chars)."""
+        try:
+            result = subprocess.run(
+                command, shell=True, cwd=self.app_dir,
+                capture_output=True, text=True, timeout=10
+            )
+            output = result.stdout + result.stderr
+            return output[:5000] if output else "(no output)"
+        except subprocess.TimeoutExpired:
+            return "Command timed out (10s limit)."
+        except Exception as e:
+            return f"Error: {e}"
 
     def find_functions_by_name(self, function_name: str) -> list[CodeChunk]:
         chunks_metadata_path = os.path.join(self.storage_dir, "chunks_metadata.npy")
