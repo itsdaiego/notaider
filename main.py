@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.styles import Style
-from prompt_toolkit.lexers import Lexer
 import asyncio
-from code_workflow import CodeWorkflow
-from colors import Colors
-from storage import Storage
-from pydantic_ai import Agent
-
 import os
 
 from dotenv import load_dotenv
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.lexers import Lexer
+from prompt_toolkit.styles import Style
+from pydantic_ai import Agent
+
+from code_workflow import CodeWorkflow
+from colors import Colors
+from observability import init_observability
+from storage import Storage
 
 load_dotenv()
+init_observability()
 
 # Enable debugpy only when ENABLE_DEBUGPY is set
 if os.getenv("ENABLE_DEBUGPY", "0") == "1":

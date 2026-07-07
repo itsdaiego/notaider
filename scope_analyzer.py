@@ -33,7 +33,7 @@ class ScopeAnalysis(BaseModel):
 class ScopeAnalyzer:
     def __init__(self, model: str):
         self.model = model
-        self.agent = Agent(self.model, output_type=ScopeAnalysis, retries=3)
+        self.agent = Agent(self.model, output_type=ScopeAnalysis, retries=3, instrument=True)
 
     async def analyze(self, query: str, codebase_stats: CodebaseStats | None = None) -> ScopeAnalysis:
         stats_context = ""

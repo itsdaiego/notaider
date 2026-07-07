@@ -24,6 +24,7 @@ dependencies = [
     "openai>=1.0.0",
     "debugpy>=1.8.0",
     "faiss-cpu>=1.8.0",
+    "langfuse>=3.0.0",
     "numpy>=2.3.0",
     "prompt-toolkit>=3.0.0",
     "pydantic>=2.11.0",
@@ -44,7 +45,7 @@ dev = [
 notaider = "main:main"
 
 [tool.setuptools]
-py-modules = ["main", "code_workflow", "colors", "storage", "scope_analyzer"]
+py-modules = ["main", "code_workflow", "colors", "storage", "scope_analyzer", "observability"]
 
 [tool.black]
 line-length = 100

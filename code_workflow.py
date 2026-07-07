@@ -54,6 +54,7 @@ class CodeWorkflow:
             chunks_index_path = os.path.join(self.storage.storage_dir, "chunks_index.faiss")
             if not os.path.exists(chunks_index_path):
                 print(f"{Colors.INFO}Initializing code chunks database...")
+                self.storage.store_code_chunks()
                 print(f"{Colors.SUCCESS}Code chunks ready!")
         except Exception as e:
             print(f"{Colors.MUTED}Note: Could not initialize chunks database: {e}")

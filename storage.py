@@ -303,6 +303,9 @@ class Storage:
         (chunks_index, metadata) = self.load_index("chunks_index.faiss", "chunks_metadata.npy", True)
         metadata = cast(list[CodeChunk], metadata)
 
+        if chunks_index is None or not metadata:
+            return []
+
         search_k = min(max(top_k * 3, 15), len(metadata))
 
         query_embedding = self.model.encode([query], convert_to_numpy=True)
