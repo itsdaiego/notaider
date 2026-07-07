@@ -38,13 +38,16 @@ class ScopeAnalyzer:
     async def analyze(self, query: str, codebase_stats: CodebaseStats | None = None) -> ScopeAnalysis:
         stats_context = ""
         if codebase_stats and codebase_stats.total_chunks > 0:
+            files_by_chunk_count = "\n".join(
+                f"  - {f}: {c} chunks" for f, c in codebase_stats.chunks_by_file.items()
+            )
             stats_context = f"""
 **CODEBASE STATISTICS (use these to inform your suggested_top_k):**
 - Total chunks in codebase: {codebase_stats.total_chunks}
 - Functions: {codebase_stats.chunks_by_type.get('function', 0)}
 - Classes: {codebase_stats.chunks_by_type.get('class', 0)}
 - Files and their chunk counts:
-{"\n".join(f'  - {f}: {c} chunks' for f, c in codebase_stats.chunks_by_file.items())}
+{files_by_chunk_count}
 
 IMPORTANT: Use these REAL numbers to decide suggested_top_k:
 - If targeting a specific file, cap top_k to that file's chunk count

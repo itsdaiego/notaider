@@ -37,6 +37,7 @@ dev = [
     "pytest>=7.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
+    "pydantic-evals>=1.0.0",
 ]
 
 [project.scripts]
@@ -52,6 +53,7 @@ target-version = ["py311", "py312"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["evals/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
