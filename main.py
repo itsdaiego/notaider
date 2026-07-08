@@ -36,9 +36,9 @@ def _print_logo():
 
 
 class NotAider:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, storage: Storage | None = None):
         self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
-        self.storage = Storage(
+        self.storage = storage or Storage(
             storage_dir=os.getenv("STORAGE_DIR", "db"),
             app_dir=os.getenv("APP_DIR", "app")
         )
@@ -54,6 +54,7 @@ class NotAider:
                 "Reference actual function names, class names, and line numbers. "
                 "Never give vague instructions — answer concretely using the code you find."
             ),
+            instrument=True,
         )
 
         storage = self.storage
