@@ -19,14 +19,6 @@ from storage import Storage
 load_dotenv()
 init_observability()
 
-# Enable debugpy only when ENABLE_DEBUGPY is set
-if os.getenv("ENABLE_DEBUGPY", "0") == "1":
-    import debugpy
-    debugpy_host = os.getenv("DEBUGPY_HOST", "0.0.0.0")
-    debugpy_port = int(os.getenv("DEBUGPY_PORT", "5678"))
-    print(f"🐛 Debug mode enabled - listening on {debugpy_host}:{debugpy_port}")
-    debugpy.listen((debugpy_host, debugpy_port))
-
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def _print_logo():
