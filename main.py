@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import uuid
 
 from dotenv import load_dotenv
 from prompt_toolkit import PromptSession
@@ -13,7 +14,7 @@ from pydantic_ai import Agent
 
 from code_workflow import CodeWorkflow
 from colors import Colors
-from observability import init_observability
+from observability import init_observability, trace_session
 from storage import Storage
 
 load_dotenv()
@@ -104,6 +105,7 @@ class CommandLexer(Lexer):
         return get_line
 
 async def main():
+    session_id = str(uuid.uuid4())
     kb = KeyBindings()
 
     @kb.add('escape')
@@ -177,7 +179,8 @@ async def main():
 
                 try:
                     notaider = NotAider(api_key)
-                    enhanced = await notaider.enhance_prompt(content)
+                    with trace_session(session_id):
+                        enhanced = await notaider.enhance_prompt(content)
 
                     print(f"{Colors.INFO}{enhanced}")
 
@@ -229,7 +232,8 @@ async def main():
                         storage=notaider.storage,
                         model=notaider.model,
                     )
-                    result_message = await code_workflow.perform_diff(content)
+                    with trace_session(session_id):
+                        result_message = await code_workflow.perform_diff(content)
                     print(f"{result_message}" if result_message else "")
                 except Exception as e:
                     print(f"{Colors.ERROR}Error in code workflow: {str(e)}")
