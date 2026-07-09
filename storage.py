@@ -54,11 +54,11 @@ load_dotenv()
 
 
 class Storage:
-    def __init__(self, storage_dir="db", app_dir="app"):
+    def __init__(self, storage_dir="db", app_dir="app", model=None, cross_encoder=None):
         self.storage_dir = storage_dir
         self.app_dir = app_dir
-        self._model = None
-        self._cross_encoder = None
+        self._model = model
+        self._cross_encoder = cross_encoder
 
     @property
     def model(self):

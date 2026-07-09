@@ -85,11 +85,11 @@ class CodeWorkflow:
 
         return context_chunks
 
-    async def _adjust_instructions(self, query: str, scope: ScopeAnalysis, context_chunks: list[str]) -> AgentRunResult[list[CodeWorkflowOutput]]:
+    async def _adjust_instructions(self, query: str, scope: ScopeAnalysis, context_chunks: list[str], chunk_count: int) -> AgentRunResult[list[CodeWorkflowOutput]]:
         if scope.scope_type in ["file", "project", "all"]:
             scope_instruction = f"""
         SCOPE: The user wants to modify {scope.intent_description}.
-        This is a BROAD scope ({scope.scope_type}) - you MUST return modifications for ALL {len(code_chunks)} chunks provided below.
+        This is a BROAD scope ({scope.scope_type}) - you MUST return modifications for ALL {chunk_count} chunks provided below.
         Each chunk should receive the modification requested by the user.
         """
         elif scope.scope_type == "multiple":
@@ -143,7 +143,7 @@ class CodeWorkflow:
         """
 
         ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
-        structured_agent = Agent(ai_model, output_type=list[CodeWorkflowOutput], retries=5)
+        structured_agent = Agent(ai_model, output_type=list[CodeWorkflowOutput], retries=5, instrument=True)
 
         @structured_agent.tool_plain
         def search_code(query: str) -> str:
@@ -231,7 +231,7 @@ class CodeWorkflow:
 
             context_chunks = self._build_chunk_context(code_chunks)
 
-            response = await self._adjust_instructions(query, scope, context_chunks)
+            response = await self._adjust_instructions(query, scope, context_chunks, len(code_chunks))
 
             for output in response.output:
                 cleaned_code = self._clean_code_response(str(output.code))
