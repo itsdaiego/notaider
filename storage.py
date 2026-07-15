@@ -8,6 +8,7 @@ import subprocess
 from typing import TypedDict, cast
 
 import faiss
+from langfuse import get_client
 import numpy as np
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
@@ -343,11 +344,23 @@ class Storage:
         results.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
         return results
 
+    def _score_retrieval(self, results: list[SearchedCodeChunk]) -> None:
+        try:
+            langfuse = get_client()
+            langfuse.score_current_span(
+                name="retrieval_relevance",
+                value=results[0]["cross_encoder_score"],
+                data_type="NUMERIC",
+            )
+        except Exception:
+            pass
+
     def format_search_results(self, query: str, top_k: int = 5) -> str:
         """Format code chunk search results as a readable string for LLM consumption."""
         results = self.search_code_chunks(query, top_k=top_k, rerank=True)
         if not results:
             return "No results found."
+        self._score_retrieval(results)
         output = ""
         for i, chunk in enumerate(results, 1):
             output += f"\n{i}: {chunk['filename']} - {chunk['type']} '{chunk['name']}' (line {chunk['lineno']}):\n"

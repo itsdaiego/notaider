@@ -206,6 +206,8 @@ class CodeWorkflow:
             print(f"{Colors.INFO}🔎 Retrieving and reranking code chunks...")
 
             code_chunks = self.storage.search_code_chunks(query, top_k=effective_top_k, rerank=True, target_functions=scope.target_functions)
+            if code_chunks:
+                self.storage._score_retrieval(code_chunks)
 
             if scope.target_file:
                 code_chunks = [
