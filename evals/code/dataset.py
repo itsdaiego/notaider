@@ -4,10 +4,6 @@ from pydantic_evals.evaluators import LLMJudge
 from evals.ask.dataset import JUDGE_MODEL, JUDGE_MODEL_SETTINGS
 from evals.code.evaluators import SyntaxValid
 
-# (name, query, rubric) triples - the single source of truth for both CASES (below)
-# and run_calibration.py's single-evaluator calibration cases, since calibration
-# only makes sense for the non-deterministic LLMJudge, not the deterministic
-# SyntaxValid gate - see run_calibration.py for why.
 CASE_DEFINITIONS: list[tuple[str, str, str]] = [
     (
         "single-log-search-todos",
