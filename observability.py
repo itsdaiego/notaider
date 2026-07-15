@@ -9,9 +9,6 @@ def init_observability() -> None:
     get_client()  # reads LANGFUSE_* env vars, registers global OTel tracer provider
 
 
-def trace_session(session_id: str):
-    """Group all spans created within the block under one Langfuse session.
-
-    No-op when Langfuse is disabled (no LANGFUSE_PUBLIC_KEY) — safe to use unconditionally.
-    """
-    return propagate_attributes(session_id=session_id)
+def trace_session(session_id: str, tags: list[str] | None = None):
+    """Group all spans created within the block under one Langfuse session."""
+    return propagate_attributes(session_id=session_id, tags=tags or [])
