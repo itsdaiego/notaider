@@ -1,5 +1,3 @@
-import ast
-import os
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -12,6 +10,8 @@ from langfuse import get_client
 import numpy as np
 from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
+
+from utils import distance_to_similarity
 
 
 class ParsedCodeChunk(TypedDict):
@@ -146,7 +146,7 @@ class Storage:
 
         results: list[SearchResult] = []
 
-        similarities = 1 / (1 + distances[0])
+        similarities = distance_to_similarity(distances[0])
 
         for idx, similarity in zip(indices[0], similarities):
             filename = filenames[idx]
@@ -313,7 +313,7 @@ class Storage:
         distances, indices = chunks_index.search(query_embedding, search_k)
 
         results: list[SearchedCodeChunk] = []
-        similarities = 1 / (1 + distances[0])
+        similarities = distance_to_similarity(distances[0])
 
         for idx, similarity in zip(indices[0], similarities):
             if idx < len(metadata):
@@ -347,9 +347,11 @@ class Storage:
     def _score_retrieval(self, results: list[SearchedCodeChunk]) -> None:
         try:
             langfuse = get_client()
+            score = results[0]["cross_encoder_score"]
+            normalized = distance_to_similarity(np.exp(-score))
             langfuse.score_current_span(
                 name="retrieval_relevance",
-                value=results[0]["cross_encoder_score"],
+                value=float(normalized),
                 data_type="NUMERIC",
             )
         except Exception:
