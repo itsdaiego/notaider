@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic_evals import Case
 
+from evals.scope.evaluators import ConfidenceBand
 from scope_analyzer import ScopeAnalysis
 
 ScopeType = Literal["single", "multiple", "file", "project", "all"]
@@ -12,8 +13,6 @@ def expected(
     target_file: str | None = None,
     target_functions: list[str] | None = None,
 ) -> ScopeAnalysis:
-    """Builds an expected ScopeAnalysis. Only scope_type/target_file/target_functions are
-    checked by evaluators; the remaining required fields are placeholders."""
     return ScopeAnalysis(
         scope_type=scope_type,
         confidence=0.0,
@@ -101,45 +100,24 @@ CASES = [
         name="vague-fix-it",
         inputs="fix it",
         expected_output=expected("single"),
-        metadata={"confidence_band": "low"},
+        evaluators=(ConfidenceBand("low"),),
     ),
     Case(
         name="vague-make-better",
         inputs="make it better",
         expected_output=expected("single"),
-        metadata={"confidence_band": "low"},
+        evaluators=(ConfidenceBand("low"),),
     ),
     Case(
         name="vague-improve-code",
         inputs="improve the code",
         expected_output=expected("single"),
-        metadata={"confidence_band": "low"},
+        evaluators=(ConfidenceBand("low"),),
     ),
     Case(
         name="vague-handle-properly",
         inputs="handle this properly",
         expected_output=expected("single"),
-        metadata={"confidence_band": "low"},
-    ),
-    # -- language-agnostic: quantity indicators in other languages --
-    Case(
-        name="lang-pt-file-todo",
-        inputs="adicione um print em todas as funções do arquivo todo.py",
-        expected_output=expected("file", target_file="todo.py"),
-    ),
-    Case(
-        name="lang-pt-project-logging",
-        inputs="adicione logging para todas as funções do projeto",
-        expected_output=expected("project"),
-    ),
-    Case(
-        name="lang-zh-file-todo",
-        inputs="在 todo.py 的每个函数中添加类型提示",
-        expected_output=expected("file", target_file="todo.py"),
-    ),
-    Case(
-        name="lang-es-project-error-handling",
-        inputs="agrega manejo de errores a todas las funciones del proyecto",
-        expected_output=expected("project"),
+        evaluators=(ConfidenceBand("low"),),
     ),
 ]

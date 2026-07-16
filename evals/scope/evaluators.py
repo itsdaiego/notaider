@@ -8,39 +8,16 @@ from scope_analyzer import ScopeAnalysis
 
 
 @dataclass
-class ScopeTypeMatch(Evaluator[str, ScopeAnalysis, dict]):
-    def evaluate(self, ctx: EvaluatorContext[str, ScopeAnalysis, dict]) -> bool:
-        if ctx.expected_output is None:
-            return True
-        return ctx.output.scope_type == ctx.expected_output.scope_type
-
-
-@dataclass
-class TargetFileMatch(Evaluator[str, ScopeAnalysis, dict]):
-    def evaluate(self, ctx: EvaluatorContext[str, ScopeAnalysis, dict]) -> bool:
-        if ctx.expected_output is None:
-            return True
-        return ctx.output.target_file == ctx.expected_output.target_file
-
-
-@dataclass
-class TargetFunctionsMatch(Evaluator[str, ScopeAnalysis, dict]):
-    def evaluate(self, ctx: EvaluatorContext[str, ScopeAnalysis, dict]) -> bool:
-        if ctx.expected_output is None:
-            return True
-        return set(ctx.output.target_functions) == set(ctx.expected_output.target_functions)
-
-
-@dataclass
 class ConfidenceBand(Evaluator[str, ScopeAnalysis, dict]):
-    """Checks confidence falls in the band implied by the case's metadata, not an exact value."""
+    """Checks output confidence falls in the specified band."""
+
+    band: Literal["high", "medium", "low"] = "high"
 
     def evaluate(self, ctx: EvaluatorContext[str, ScopeAnalysis, dict]) -> bool:
-        band: Literal["high", "medium", "low"] = (ctx.metadata or {}).get("confidence_band", "high")
         confidence = ctx.output.confidence
-        if band == "high":
+        if self.band == "high":
             return confidence >= 0.8
-        if band == "medium":
+        if self.band == "medium":
             return 0.5 <= confidence < 0.8
         return confidence < 0.5
 

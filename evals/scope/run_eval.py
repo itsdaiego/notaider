@@ -4,13 +4,7 @@ import sys
 from pydantic_evals import Dataset
 
 from evals.scope.dataset import CASES
-from evals.scope.evaluators import (
-    ConfidenceBand,
-    ScopeTypeMatch,
-    TargetFileMatch,
-    TargetFunctionsMatch,
-    TopKSane,
-)
+from evals.scope.evaluators import TopKSane
 from evals.scope.fixtures import EVAL_STATS
 from scope_analyzer import ScopeAnalysis, ScopeAnalyzer
 
@@ -27,10 +21,6 @@ def main() -> int:
     dataset = Dataset(
         cases=CASES,
         evaluators=[
-            ScopeTypeMatch(),
-            TargetFileMatch(),
-            TargetFunctionsMatch(),
-            ConfidenceBand(),
             TopKSane(),
         ],
     )

@@ -213,7 +213,7 @@ async def main():
                 except Exception as e:
                     print(f"{Colors.ERROR}Error listing files: {str(e)}")
 
-            elif command.startswith('@code '):
+            elif command.startswith('@code'):
                 content = command[6:].strip()
                 if not content:
                     print(f"{Colors.MUTED}Usage: @code <your request>")
