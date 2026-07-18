@@ -179,7 +179,7 @@ async def main():
 
                 try:
                     notaider = NotAider(api_key)
-                    with trace_session(session_id, tags=["ask"]):
+                    with trace_session(session_id, tags=["ask"], name="ask"):
                         enhanced = await notaider.enhance_prompt(content)
 
                     print(f"{Colors.INFO}{enhanced}")
@@ -232,7 +232,7 @@ async def main():
                         storage=notaider.storage,
                         model=notaider.model,
                     )
-                    with trace_session(session_id, tags=["code"]):
+                    with trace_session(session_id, tags=["code"], name="code"):
                         result_message = await code_workflow.perform_diff(content)
                     print(f"{result_message}" if result_message else "")
                 except Exception as e:

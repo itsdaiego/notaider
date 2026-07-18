@@ -1,3 +1,4 @@
+import ast
 import os
 import re
 from collections.abc import Iterator
@@ -209,18 +210,17 @@ class Storage:
 
         for path in Path(self.app_dir).rglob("*.py"):
             if path.is_file() and (not match or match in str(path)):
+                relative_path = str(path.relative_to(self.app_dir))
                 with open(path, "r", encoding="utf-8") as file:
                     content = file.read()
 
                 for chunk in self._parse_code_chunks(content, str(path)):
-                    chunk_id = f"{path.name}:{chunk['type']}:{chunk['name']}"
+                    chunk_id = f"{relative_path}:{chunk['type']}:{chunk['name']}"
                     existing = existing_by_id.get(chunk_id)
 
                     if existing and existing[1]["code"] == chunk["code"]:
                         continue
 
-                    # if is existing but code is not the same, its then stale and
-                    # needs to be updated
                     if existing:
                         stale_ids.add(chunk_id)
 
@@ -228,7 +228,7 @@ class Storage:
                     changed_metadata.append(
                         {
                             "chunk_id": chunk_id,
-                            "filename": path.name,
+                            "filename": relative_path,
                             "type": chunk["type"],
                             "name": chunk["name"],
                             "lineno": chunk["lineno"],

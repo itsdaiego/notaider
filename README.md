@@ -31,7 +31,7 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 
 [x] create support for multiple changes in a single prompt
 
-[ ] create multi-file support
+[x] create multi-file support
 
 [x] add tools to the agent (i.e allow grep for not indexed files, create files/dirs etc...)
 

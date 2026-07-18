@@ -13,9 +13,9 @@ class ScopeAnalysis(BaseModel):
     confidence: float = Field(
         ge=0.0, le=1.0, description="Confidence level of the analysis (0.0 to 1.0)"
     )
-    target_file: str | None = Field(
-        default=None,
-        description="Specific filename mentioned in the query, if any (e.g., 'main.py')",
+    target_files: list[str] = Field(
+        default_factory=list,
+        description="Specific filenames mentioned in the query (e.g., ['main.py'] or ['game.py', 'food.py'])",
     )
     target_functions: list[str] = Field(
         default_factory=list, description="List of specific function or class names mentioned"
@@ -71,10 +71,11 @@ Analyze the user's query and determine:
    - Medium (0.5-0.79): Query is somewhat ambiguous
    - Low (0.0-0.49): Query is very vague or unclear
 
-3. **target_file**: Extract any specific filename mentioned
+3. **target_files**: Extract any specific filenames mentioned
    - Look for patterns like "in auth.py", "the main.py file", "storage module"
    - Return just the filename (e.g., "auth.py"), not the full path
-   - Return None if no specific file is mentioned
+   - Return a list: one file for single/file scope, multiple for multiple/project scope
+   - Return [] if no specific file is mentioned
 
 4. **target_functions**: Extract specific function or class names mentioned
    - Look for identifiers that look like code names (snake_case, camelCase, etc.)
@@ -102,16 +103,19 @@ Analyze the user's query and determine:
 **Examples:**
 
 Query: "add print statement to get_todo"
-→ scope_type: "single", target_functions: ["get_todo"], suggested_top_k: 3
+→ scope_type: "single", target_functions: ["get_todo"], target_files: [], suggested_top_k: 3
 
 Query: "update get_todo and delete_todo to use async"
-→ scope_type: "multiple", target_functions: ["get_todo", "delete_todo"], suggested_top_k: 4
+→ scope_type: "multiple", target_functions: ["get_todo", "delete_todo"], target_files: [], suggested_top_k: 4
+
+Query: "add print to run_game in game.py and spawn in food.py"
+→ scope_type: "multiple", target_functions: ["run_game", "spawn"], target_files: ["game.py", "food.py"], suggested_top_k: 4
 
 Query: "add docstrings o every function in storage.py" (storage.py has 12 chunks)
-→ scope_type: "file", target_file: "storage.py", suggested_top_k: 12
+→ scope_type: "file", target_files: ["storage.py"], suggested_top_k: 12
 
 Query: "refactor all error handling across the codebase" (50 total chunks)
-→ scope_type: "all", suggested_top_k: 50
+→ scope_type: "all", target_files: [], suggested_top_k: 50
 """
 
         user_message = f"""Analyze this query and return a structured scope analysis:
@@ -132,7 +136,7 @@ Remember to:
             return ScopeAnalysis(
                 scope_type="single",
                 confidence=0.1,
-                target_file=None,
+                target_files=[],
                 target_functions=[],
                 intent_description=f"Failed to analyze query: {str(e)}",
                 suggested_top_k=3,
