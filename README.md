@@ -11,18 +11,15 @@ aider... but actually not.
 1. Clone the repository and navigate to the project directory
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
-```
-
-3. Install the CLI tool:
-```bash
-pip install -e .
+uv venv
+uv sync
+make run
 ```
 
 ## Setup
 
 ```bash
-export ANTHROPIC_API_KEY="your-api-key-here"
+export OPENAI_API_KEY="your-api-key-here"
 ```
 
 ## Roadmap
