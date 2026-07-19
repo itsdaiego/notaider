@@ -298,7 +298,12 @@ class Storage:
             return []
 
     def search_code_chunks(
-        self, query: str, top_k: int = 5, rerank: bool = False, target_functions: list[str] | None = None
+        self,
+        query: str,
+        top_k: int = 5,
+        rerank: bool = False,
+        target_functions: list[str] | None = None,
+        target_files: list[str] | None = None,
     ) -> list[SearchedCodeChunk]:
         self._ensure_dirs()
 
@@ -316,18 +321,32 @@ class Storage:
         results: list[SearchedCodeChunk] = []
         similarities = distance_to_similarity(distances[0])
 
+        # since we have one query, indices is always 0
         for idx, similarity in zip(indices[0], similarities):
             if idx < len(metadata):
                 chunk: SearchedCodeChunk = {**metadata[idx], "similarity": float(similarity)}  # type: ignore[misc]
                 results.append(chunk)
 
+        if target_files:
+            retrieved_files = {chunk["filename"] for chunk in results}
+            missing_files = set(target_files) - retrieved_files
+            if missing_files:
+                for chunk_meta in metadata:
+                    if chunk_meta["filename"] in missing_files:
+                        injected: SearchedCodeChunk = {**chunk_meta, "similarity": 0.0}  # type: ignore[misc]
+                        results.append(injected)
+
         if rerank and results:
-            results = self.rerank_results(query, results, target_functions or [])
+            results = self.rerank_results(query, results, target_functions or [], target_files)
 
         return results[:top_k]
 
     def rerank_results(
-        self, query: str, results: list[SearchedCodeChunk], target_functions: list[str]
+        self,
+        query: str,
+        results: list[SearchedCodeChunk],
+        target_functions: list[str],
+        target_files: list[str] | None = None,
     ) -> list[SearchedCodeChunk]:
         if not results:
             return results
@@ -336,16 +355,19 @@ class Storage:
         scores = self.cross_encoder.predict(pairs)
 
         target_set = set(target_functions)
+        target_file_set = set(target_files) if target_files else set()
         for i, chunk in enumerate(results):
             score = float(scores[i])
             if chunk["name"] in target_set:
                 score += 10.0
+            if chunk["filename"] in target_file_set:
+                score += 5.0
             chunk["cross_encoder_score"] = score
 
         results.sort(key=lambda x: x["cross_encoder_score"], reverse=True)
         return results
 
-    def _score_retrieval(self, results: list[SearchedCodeChunk]) -> None:
+    def send_score_retrieval(self, results: list[SearchedCodeChunk]) -> None:
         try:
             langfuse = get_client()
             score = results[0]["cross_encoder_score"]
@@ -363,7 +385,7 @@ class Storage:
         results = self.search_code_chunks(query, top_k=top_k, rerank=True)
         if not results:
             return "No results found."
-        self._score_retrieval(results)
+        self.send_score_retrieval(results)
         output = ""
         for i, chunk in enumerate(results, 1):
             output += f"\n{i}: {chunk['filename']} - {chunk['type']} '{chunk['name']}' (line {chunk['lineno']}):\n"

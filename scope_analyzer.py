@@ -73,7 +73,7 @@ Analyze the user's query and determine:
 
 3. **target_files**: Extract any specific filenames mentioned
    - Look for patterns like "in auth.py", "the main.py file", "storage module"
-   - Return just the filename (e.g., "auth.py"), not the full path
+   - Return the fullpath of the file, not only the filename
    - Return a list: one file for single/file scope, multiple for multiple/project scope
    - Return [] if no specific file is mentioned
 
