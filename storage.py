@@ -269,6 +269,15 @@ class Storage:
             tree = ast.parse(code)
         except SyntaxError as e:
             print(f"Syntax error in {filepath}: {e}")
+            line_count = code.count("\n") + 1
+            yield {
+                "type": "module",
+                "name": Path(filepath).stem,
+                "lineno": 1,
+                "end_lineno": line_count,
+                "code": code,
+                "filepath": filepath,
+            }
             return
 
         for node in ast.walk(tree):
