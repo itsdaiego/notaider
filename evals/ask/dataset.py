@@ -7,11 +7,17 @@ from pydantic_evals.evaluators import LLMJudge
 JUDGE_MODEL: Final = "openai:gpt-4o"
 JUDGE_MODEL_SETTINGS: Final[ModelSettings] = {"temperature": 0}
 
+Q_LOCATE_SEARCH_TODOS = "where is search_todos defined and what does it do?"
+Q_EXPLAIN_MARK_COMPLETED = "what does mark_completed do on a todo item?"
+Q_WHICH_FILE_ADD_REMOVE = "which file and class contain add_todo and remove_todo?"
+Q_EXPLAIN_CMD_SEARCH = "how does the search command work in the CLI?"
+Q_CONFIG_SEARCH_SETTINGS = "what search-related settings exist in the config?"
+Q_NOT_FOUND_PAYMENT = "where is the process_payment function implemented?"
+
 CASES = [
-    # -- locate a function --
     Case(
         name="locate-search-todos",
-        inputs="where is search_todos defined and what does it do?",
+        inputs=Q_LOCATE_SEARCH_TODOS,
         evaluators=(
             LLMJudge(
                 rubric=(
@@ -25,10 +31,9 @@ CASES = [
             ),
         ),
     ),
-    # -- explain behavior of a method --
     Case(
         name="explain-mark-completed",
-        inputs="what does mark_completed do on a todo item?",
+        inputs=Q_EXPLAIN_MARK_COMPLETED,
         evaluators=(
             LLMJudge(
                 rubric=(
@@ -42,10 +47,9 @@ CASES = [
             ),
         ),
     ),
-    # -- which file / class --
     Case(
         name="which-file-add-remove-todo",
-        inputs="which file and class contain add_todo and remove_todo?",
+        inputs=Q_WHICH_FILE_ADD_REMOVE,
         evaluators=(
             LLMJudge(
                 rubric=(
@@ -58,10 +62,9 @@ CASES = [
             ),
         ),
     ),
-    # -- explain a CLI command handler --
     Case(
         name="explain-cmd-search",
-        inputs="how does the search command work in the CLI?",
+        inputs=Q_EXPLAIN_CMD_SEARCH,
         evaluators=(
             LLMJudge(
                 rubric=(
@@ -74,10 +77,9 @@ CASES = [
             ),
         ),
     ),
-    # -- config lookup --
     Case(
         name="config-search-settings",
-        inputs="what search-related settings exist in the config?",
+        inputs=Q_CONFIG_SEARCH_SETTINGS,
         evaluators=(
             LLMJudge(
                 rubric=(
@@ -89,10 +91,9 @@ CASES = [
             ),
         ),
     ),
-    # -- not in the codebase: must not hallucinate --
     Case(
         name="not-found-payment",
-        inputs="where is the process_payment function implemented?",
+        inputs=Q_NOT_FOUND_PAYMENT,
         evaluators=(
             LLMJudge(
                 rubric=(

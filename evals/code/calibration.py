@@ -1,15 +1,14 @@
+from evals.code.dataset import (
+    Q_CLI_DOCSTRINGS,
+    Q_LOG_SEARCH_TODOS,
+    Q_REFACTOR_PAYMENT,
+    Q_SEARCH_VALIDATION_AND_DOCSTRING,
+    Q_VAGUE_MAKE_BETTER,
+)
 from evals.code.output import CodeEvalOutput
 
-# Hand-labeled canned CodeEvalOutputs standing in for human judgment: GOOD_OUTPUTS
-# should be judged as passing, BAD_OUTPUTS as failing. Keyed by the same query
-# strings as evals/code/dataset.py's CASE_DEFINITIONS, so run_calibration.py can
-# reuse each query's own name/rubric instead of duplicating them here.
-# modified_files snippets are illustrative, not full files - calibration only runs
-# LLMJudge (not SyntaxValid, see run_calibration.py), so they don't need to be
-# complete/parseable file contents.
-
 GOOD_OUTPUTS: dict[str, CodeEvalOutput] = {
-    "add a print statement logging the query at the start of search_todos": CodeEvalOutput(
+    Q_LOG_SEARCH_TODOS: CodeEvalOutput(
         diff=(
             "--- a/todo.py\n+++ b/todo.py\n@@ -197,6 +197,7 @@\n"
             "     def search_todos(self, query: str) -> List[TodoItem]:\n"
@@ -29,8 +28,7 @@ GOOD_OUTPUTS: dict[str, CodeEvalOutput] = {
             )
         },
     ),
-    "add validation to search_todos in todo.py to ignore empty or blank queries, "
-    "and add a docstring to cmd_search in cli.py explaining what it does": CodeEvalOutput(
+    Q_SEARCH_VALIDATION_AND_DOCSTRING: CodeEvalOutput(
         diff=(
             "--- a/todo.py\n+++ b/todo.py\n@@ -197,6 +197,8 @@\n"
             "     def search_todos(self, query: str) -> List[TodoItem]:\n"
@@ -65,8 +63,7 @@ GOOD_OUTPUTS: dict[str, CodeEvalOutput] = {
             ),
         },
     ),
-    "add a short docstring to every function in cli.py that doesn't already have "
-    "one": CodeEvalOutput(
+    Q_CLI_DOCSTRINGS: CodeEvalOutput(
         diff=(
             "--- a/cli.py\n+++ b/cli.py\n@@ -17,6 +17,7 @@\n"
             "     def __init__(self):\n"
@@ -83,11 +80,11 @@ GOOD_OUTPUTS: dict[str, CodeEvalOutput] = {
             )
         },
     ),
-    "refactor the process_payment function to use the new billing SDK": CodeEvalOutput(
+    Q_REFACTOR_PAYMENT: CodeEvalOutput(
         diff="(no changes applied) Nothing found. Please try a different query.",
         modified_files={},
     ),
-    "make it better": CodeEvalOutput(
+    Q_VAGUE_MAKE_BETTER: CodeEvalOutput(
         diff="(no changes applied) Confidence is low, skipping diff apply operation: 0.20",
         modified_files={},
     ),
@@ -111,8 +108,7 @@ BAD_OUTPUTS: dict[str, CodeEvalOutput] = {
             )
         },
     ),
-    "add validation to search_todos in todo.py to ignore empty or blank queries, "
-    "and add a docstring to cmd_search in cli.py explaining what it does": CodeEvalOutput(
+    Q_SEARCH_VALIDATION_AND_DOCSTRING: CodeEvalOutput(
         diff=(
             "--- a/todo.py\n+++ b/todo.py\n@@ -197,6 +197,7 @@\n"
             "     def search_todos(self, query: str) -> List[TodoItem]:\n"
@@ -132,8 +128,7 @@ BAD_OUTPUTS: dict[str, CodeEvalOutput] = {
             )
         },
     ),
-    "add a short docstring to every function in cli.py that doesn't already have "
-    "one": CodeEvalOutput(
+    Q_CLI_DOCSTRINGS: CodeEvalOutput(
         diff=(
             "--- a/cli.py\n+++ b/cli.py\n@@ -289,7 +289,7 @@\n"
             "     def cmd_search(self, args):\n"
@@ -149,7 +144,7 @@ BAD_OUTPUTS: dict[str, CodeEvalOutput] = {
             )
         },
     ),
-    "refactor the process_payment function to use the new billing SDK": CodeEvalOutput(
+    Q_REFACTOR_PAYMENT: CodeEvalOutput(
         diff=(
             "--- a/utils.py\n+++ b/utils.py\n@@ -116,6 +116,15 @@\n"
             " class TodoUtils:\n"
@@ -174,7 +169,7 @@ BAD_OUTPUTS: dict[str, CodeEvalOutput] = {
             )
         },
     ),
-    "make it better": CodeEvalOutput(
+    Q_VAGUE_MAKE_BETTER: CodeEvalOutput(
         diff=(
             "--- a/config.py\n+++ b/config.py\n@@ -78,7 +78,7 @@\n"
             "     # Search settings\n"

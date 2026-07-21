@@ -8,13 +8,6 @@ from evals.code.calibration import BAD_OUTPUTS, GOOD_OUTPUTS
 from evals.code.dataset import CASE_DEFINITIONS
 from evals.code.output import CodeEvalOutput
 
-# Judge calibration for @code: only LLMJudge is calibrated here, not SyntaxValid.
-# CASES (dataset.py) attaches both evaluators per case, but that pairing doesn't
-# work for calibration - a semantically bad diff is still typically valid Python,
-# so SyntaxValid would pass on a "bad" example and register as a false mismatch.
-# SyntaxValid is deterministic and already covered by test_evaluators.py; building
-# single-judge-only cases from CASE_DEFINITIONS directly (rather than filtering
-# CASES) keeps that separation explicit instead of relying on isinstance filtering.
 AGREEMENT_THRESHOLD = 0.85
 
 

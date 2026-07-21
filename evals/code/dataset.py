@@ -4,10 +4,21 @@ from pydantic_evals.evaluators import LLMJudge
 from evals.ask.dataset import JUDGE_MODEL, JUDGE_MODEL_SETTINGS
 from evals.code.evaluators import SyntaxValid
 
+Q_LOG_SEARCH_TODOS = "add a print statement logging the query at the start of search_todos"
+Q_SEARCH_VALIDATION_AND_DOCSTRING = (
+    "add validation to search_todos in todo.py to ignore empty or blank queries, "
+    "and add a docstring to cmd_search in cli.py explaining what it does"
+)
+Q_CLI_DOCSTRINGS = (
+    "add a short docstring to every function in cli.py that doesn't already have one"
+)
+Q_REFACTOR_PAYMENT = "refactor the process_payment function to use the new billing SDK"
+Q_VAGUE_MAKE_BETTER = "make it better"
+
 CASE_DEFINITIONS: list[tuple[str, str, str]] = [
     (
         "single-log-search-todos",
-        "add a print statement logging the query at the start of search_todos",
+        Q_LOG_SEARCH_TODOS,
         (
             "The diff must add a print or logging statement near the start of "
             "search_todos (TodoManager, todo.py) that includes the query. It must "
@@ -17,8 +28,7 @@ CASE_DEFINITIONS: list[tuple[str, str, str]] = [
     ),
     (
         "multi-search-validation-and-docstring",
-        "add validation to search_todos in todo.py to ignore empty or blank queries, "
-        "and add a docstring to cmd_search in cli.py explaining what it does",
+        Q_SEARCH_VALIDATION_AND_DOCSTRING,
         (
             "The diff must touch BOTH todo.py and cli.py: search_todos (TodoManager, "
             "todo.py) must gain an early guard that skips/returns for an empty or "
@@ -28,8 +38,7 @@ CASE_DEFINITIONS: list[tuple[str, str, str]] = [
     ),
     (
         "file-scope-cli-docstrings",
-        "add a short docstring to every function in cli.py that doesn't already "
-        "have one",
+        Q_CLI_DOCSTRINGS,
         (
             "cli.py's TodoCLI.__init__ is the only function lacking a docstring; "
             "every other function in the file already has one. The diff should add "
@@ -41,7 +50,7 @@ CASE_DEFINITIONS: list[tuple[str, str, str]] = [
     ),
     (
         "not-found-payment",
-        "refactor the process_payment function to use the new billing SDK",
+        Q_REFACTOR_PAYMENT,
         (
             "There is no process_payment function or any payment-processing code in "
             "this codebase. The correct behavior is to report that nothing was found "
@@ -51,7 +60,7 @@ CASE_DEFINITIONS: list[tuple[str, str, str]] = [
     ),
     (
         "vague-make-it-better",
-        "make it better",
+        Q_VAGUE_MAKE_BETTER,
         (
             "This request is too vague to safely act on. The correct behavior is to "
             "decline (report low confidence / skip the change) rather than guessing "
