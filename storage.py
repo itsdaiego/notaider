@@ -269,15 +269,6 @@ class Storage:
             tree = ast.parse(code)
         except SyntaxError as e:
             print(f"Syntax error in {filepath}: {e}")
-            line_count = code.count("\n") + 1
-            yield {
-                "type": "module",
-                "name": Path(filepath).stem,
-                "lineno": 1,
-                "end_lineno": line_count,
-                "code": code,
-                "filepath": filepath,
-            }
             return
 
         for node in ast.walk(tree):
@@ -331,6 +322,7 @@ class Storage:
         similarities = distance_to_similarity(distances[0])
 
         # since we have one query, indices is always 0
+        # i.e indices[0][0] = first indice for first query
         for idx, similarity in zip(indices[0], similarities):
             if idx < len(metadata):
                 chunk: SearchedCodeChunk = {**metadata[idx], "similarity": float(similarity)}  # type: ignore[misc]

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError
-from pydantic_ai import Agent, AgentRunResult
+from pydantic_ai import Agent, AgentRunResult, ModelRetry
 
 from colors import Colors
 from scope_analyzer import ScopeAnalysis, ScopeAnalyzer
@@ -32,7 +32,8 @@ def _colorize_diff(diff: str) -> str:
 
 
 class CodeChunkChange(BaseModel):
-    code: str
+    old_code: str
+    new_code: str
     filename: str
     chunk_name: str
 
@@ -43,8 +44,10 @@ class CodeWorkflowOutput(BaseModel):
 
 @dataclass
 class CodeChange:
-    chunk: SearchedCodeChunk
-    updated_code: str
+    old_code: str
+    new_code: str
+    filename: str
+    chunk_name: str
 
 
 class CodeWorkflow:
@@ -89,7 +92,7 @@ class CodeWorkflow:
 
         return context_chunks
 
-    async def _adjust_instructions(self, query: str, scope: ScopeAnalysis, context_chunks: list[str], chunk_count: int) -> AgentRunResult[CodeWorkflowOutput]:
+    async def _adjust_instructions(self, query: str, scope: ScopeAnalysis, context_chunks: list[str], chunk_count: int, chunk_names: set[str] | None = None) -> AgentRunResult[CodeWorkflowOutput]:
         if scope.scope_type in ["file", "project", "all"]:
             scope_instruction = f"""
         SCOPE: The user wants to modify {scope.intent_description}.
@@ -126,29 +129,33 @@ class CodeWorkflow:
 
         CRITICAL INSTRUCTIONS:
         1. Read the SCOPE section above carefully to understand how many chunks to modify
-        2. If modifying multiple chunks, return one CodeChunkChange entry for EACH chunk in the changes list
-        3. If modifying a single chunk, return only ONE CodeChunkChange entry in the changes list
+        2. Use SEARCH/REPLACE format: specify the exact lines to find and what to replace them with
+        3. Do NOT reproduce the entire function — only include the lines that change plus minimal context
 
-        Return a CodeWorkflowOutput with a changes list. For EACH chunk that needs modification, add a CodeChunkChange with:
-        - code: the transformed code for that specific chunk
+        Return a CodeWorkflowOutput with a changes list. For EACH modification, add a CodeChunkChange with:
+        - old_code: the EXACT lines from the original code to replace. Copy them character-for-character from the chunks above, including all indentation and whitespace. Include enough surrounding lines to make the match unique within the file. old_code must NEVER be empty when modifying existing code.
+        - new_code: the replacement lines, preserving the same indentation as old_code.
         - filename: the filename of that chunk (e.g., "todo.py")
-        - chunk_name: the name of the function/class being modified (e.g., "get_todo", "TodoItem")
+        - chunk_name: the name of the function/class being modified, or the new name if adding
 
-        CRITICAL INDENTATION RULES (FAILURE TO FOLLOW WILL BREAK THE CODE):
-        1. Count the leading spaces in the FIRST line of the original code - this is the BASE indentation
-        2. Your output MUST start with EXACTLY the same number of leading spaces
-        3. Every line in your output must maintain the EXACT same indentation structure as the original
-        4. DO NOT strip, reduce, or modify any leading whitespace
-        5. If the original first line has N spaces, your first line MUST have N spaces
-        6. Example: If original starts with "    def" (4 spaces), your output MUST start with "    def" (4 spaces)
+        RULES:
+        - old_code must ALWAYS contain the original lines you are replacing. It must be a non-empty, exact substring of the code shown above.
+        - The ONLY case where old_code can be "" is when creating an entirely new function or a new file that does not exist yet.
+        - Keep old_code minimal — just the lines around the edit point, not the whole function.
+        - new_code must preserve the exact same indentation as old_code.
 
-        WHAT TO MODIFY:
-        - Add/remove/modify the code logic as requested
-        - Keep all indentation exactly as it appears in the original
+        EXAMPLE - Adding a variable to an existing function:
+        If the original code is:
+            def main():
+                print("hello")
+        And you want to add `x = 42` after the def line, you return:
+            old_code: "def main():\n    print(\"hello\")"
+            new_code: "def main():\n    x = 42\n    print(\"hello\")"
+        NOT old_code: "" — that would append to the file instead of inserting into the function.
         """
 
         ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
-        agent = Agent(ai_model, output_type=CodeWorkflowOutput, retries=5, instrument=True)
+        agent = Agent(ai_model, output_type=CodeWorkflowOutput, retries=8, instrument=True)
 
         @agent.tool_plain
         def search_code(query: str) -> str:
@@ -161,6 +168,22 @@ class CodeWorkflow:
             """Run a bash command in the project directory (e.g. grep, find, cat)."""
             print(f"{Colors.MUTED}  [tool] run_command({command!r})")
             return self.storage.run_command(command)
+
+        @agent.output_validator
+        async def validate_changes(result: CodeWorkflowOutput) -> CodeWorkflowOutput:
+            if not chunk_names:
+                return result
+            invalid = [
+                c.chunk_name for c in result.changes
+                if not c.old_code.strip() and c.chunk_name in chunk_names
+            ]
+            if invalid:
+                raise ModelRetry(
+                    f"old_code must not be empty when modifying existing code. "
+                    f"These chunks need non-empty old_code: {', '.join(invalid)}. "
+                    f"Copy the exact lines from the original code that you want to replace."
+                )
+            return result
 
         try:
             response = await agent.run(transformation_prompt)
@@ -246,19 +269,20 @@ class CodeWorkflow:
 
             context_chunks = self._build_chunk_context(code_chunks)
 
-            response = await self._adjust_instructions(query, scope, context_chunks, len(code_chunks))
+            chunk_names = {chunk["name"] for chunk in code_chunks}
+
+            response = await self._adjust_instructions(query, scope, context_chunks, len(code_chunks), chunk_names)
 
             changes: list[CodeChange] = []
             for output in response.output.changes:
-                cleaned_code = self._clean_code_response(str(output.code))
-
-                for chunk in code_chunks:
-                    if (
-                        os.path.basename(chunk["filename"]) == os.path.basename(output.filename)
-                        and chunk["name"] == output.chunk_name
-                    ):
-                        changes.append(CodeChange(chunk=chunk, updated_code=cleaned_code))
-                        break
+                old_code = self._clean_code_response(str(output.old_code))
+                new_code = self._clean_code_response(str(output.new_code))
+                changes.append(CodeChange(
+                    old_code=old_code,
+                    new_code=new_code,
+                    filename=output.filename,
+                    chunk_name=output.chunk_name,
+                ))
 
             print(f"{Colors.INFO}📝 {len(changes)} diff(s) planned...")
 
@@ -269,15 +293,10 @@ class CodeWorkflow:
             approved_changes: list[CodeChange] = []
 
             for change in changes:
-                chunk = change.chunk
-                updated_code = change.updated_code
+                diff = self._generate_diff(change.old_code, change.new_code, change.filename)
 
-                diff = self._generate_diff(chunk["code"], updated_code, chunk["filename"])
-
-                print(f"{Colors.HEADER}File: {Colors.MUTED}{chunk['filename']}")
-                print(
-                    f"{Colors.HEADER}Target: {Colors.MUTED}{chunk['type']} '{chunk['name']}' (lines {chunk['lineno']}-{chunk['end_lineno']})"
-                )
+                print(f"{Colors.HEADER}File: {Colors.MUTED}{change.filename}")
+                print(f"{Colors.HEADER}Target: {Colors.MUTED}{change.chunk_name}")
                 print(f"{Colors.HEADER}Diff:")
                 print(_colorize_diff(diff))
                 print(f"{Colors.HEADER}{'-'*30}")
@@ -288,9 +307,7 @@ class CodeWorkflow:
             if not approved_changes:
                 return "No changes applied"
 
-            approved_changes.sort(key=lambda c: c.chunk["lineno"], reverse=True)
-
-            target_files = {c.chunk["filename"] for c in approved_changes}
+            target_files = {c.filename for c in approved_changes}
             print(f"{Colors.HEADER}{'='*50}")
             print(f"{Colors.INFO}Applying {len(approved_changes)} change(s) to: {Colors.MUTED}{', '.join(target_files)}")
             print(f"{Colors.HEADER}{'='*50}")
@@ -362,76 +379,31 @@ class CodeWorkflow:
         code = code.rstrip("\n")
         return code
 
-    def _fix_indentation(self, generated_code: str, original_code: str) -> str:
-        """
-        Fix indentation of generated code to match original code's base indentation.
-
-        If the AI stripped the leading indentation, this will restore it.
-        """
-        if not generated_code or not original_code:
-            return generated_code
-
-        # Get the base indentation from the original code's first line
-        original_lines = original_code.split("\n")
-        generated_lines = generated_code.split("\n")
-
-        if not original_lines or not generated_lines:
-            return generated_code
-
-        original_first_line = original_lines[0]
-        generated_first_line = generated_lines[0]
-
-        # Count leading spaces in original
-        original_indent = len(original_first_line) - len(original_first_line.lstrip(" "))
-        # Count leading spaces in generated
-        generated_indent = len(generated_first_line) - len(generated_first_line.lstrip(" "))
-
-        # If indentation matches, no fix needed
-        if original_indent == generated_indent:
-            return generated_code
-
-        # Calculate the difference
-        indent_diff = original_indent - generated_indent
-
-        # Apply the indentation fix to all lines
-        fixed_lines = []
-        for line in generated_lines:
-            if line.strip():  # Only fix non-empty lines
-                if indent_diff > 0:
-                    # Add missing indentation
-                    fixed_lines.append(" " * indent_diff + line)
-                else:
-                    # Remove extra indentation (be careful not to remove too much)
-                    spaces_to_remove = abs(indent_diff)
-                    if line.startswith(" " * spaces_to_remove):
-                        fixed_lines.append(line[spaces_to_remove:])
-                    else:
-                        fixed_lines.append(line)
-            else:
-                fixed_lines.append(line)
-
-        return "\n".join(fixed_lines)
-
     def _apply_change(self, change: CodeChange, target_files: set[str]) -> None:
-        """Apply a single change to a file"""
+        """Apply a single search/replace change to a file."""
         try:
-            chunk = change.chunk
-            updated_code = change.updated_code
+            file_path = os.path.join(self.storage.app_dir, change.filename)
 
-            file_path = os.path.join(self.storage.app_dir, chunk["filename"])
-            with open(file_path, "r") as f:
-                full_content = f.read()
+            if not change.old_code:
+                if os.path.exists(file_path):
+                    with open(file_path, "r") as f:
+                        content = f.read()
+                    content = content.rstrip("\n") + "\n\n\n" + change.new_code + "\n"
+                else:
+                    content = change.new_code + "\n"
+                with open(file_path, "w") as f:
+                    f.write(content)
+            else:
+                with open(file_path, "r") as f:
+                    content = f.read()
 
-            lines = full_content.split("\n")
-            start_line = chunk["lineno"] - 1
-            end_line = chunk["end_lineno"]
+                if change.old_code not in content:
+                    print(f"{Colors.ERROR}old_code not found in {change.filename}, skipping{Colors.RESET}")
+                    return
 
-            new_code_lines = updated_code.split("\n")
-            modified_lines = lines[:start_line] + new_code_lines + lines[end_line:]
-
-            new_content = "\n".join(modified_lines)
-            with open(file_path, "w") as f:
-                f.write(new_content)
+                content = content.replace(change.old_code, change.new_code, 1)
+                with open(file_path, "w") as f:
+                    f.write(content)
 
             for target_file in target_files:
                 self.storage.store_code_chunks(target_file)
