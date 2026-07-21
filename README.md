@@ -2,7 +2,10 @@
 
 aider... but actually not.
 
-<img width="2553" height="2293" alt="image" src="https://github.com/user-attachments/assets/2d74117c-5613-495f-98f4-2f087e049502" />
+<img width="1258" height="303" alt="image" src="https://github.com/user-attachments/assets/ded3a94e-2e73-4dbf-af29-2a41a6be5328" />
+
+https://github.com/user-attachments/assets/a6fb54aa-621d-4d96-b76d-14de26ac6b5f
+
 
 
 
