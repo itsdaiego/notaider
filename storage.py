@@ -1,6 +1,7 @@
 import ast
 import os
 import re
+import shlex
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,43 @@ from dotenv import load_dotenv
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
 from utils import distance_to_similarity
+
+_ALLOWED_COMMANDS = frozenset({
+    "grep", "egrep", "fgrep", "find", "cat", "ls", "head", "tail",
+    "wc", "sort", "uniq", "cut", "tree", "file", "basename", "dirname", "echo",
+})
+_UNSAFE_FIND_FLAGS = frozenset(
+    {"-exec", "-execdir", "-delete", "-fprint", "-fprintf", "-ok", "-okdir"}
+)
+_CHAIN_OR_REDIRECT_PATTERN = re.compile(r"&&|\|\||;|[<>`]|\$\(")
+
+
+def _validate_command(command: str) -> str | None:
+    """Return why a command is unsafe, or None if it's an allow-listed inspection command."""
+    if _CHAIN_OR_REDIRECT_PATTERN.search(command):
+        return "chaining, redirection, or command substitution is not allowed"
+
+    for segment in command.split("|"):
+        try:
+            tokens = shlex.split(segment)
+        except ValueError as e:
+            return f"could not parse command: {e}"
+        if not tokens:
+            continue
+
+        binary = tokens[0]
+        if binary not in _ALLOWED_COMMANDS:
+            return f"{binary!r} is not an allowed read-only command"
+        if binary == "find" and _UNSAFE_FIND_FLAGS.intersection(tokens):
+            return "find with -exec/-delete/-fprint(f) is not allowed"
+
+        for token in tokens[1:]:
+            if token.startswith("/") or token.startswith("~"):
+                return f"absolute paths are not allowed, got {token!r}"
+            if ".." in token.split("/"):
+                return f"path must stay within app_dir, got {token!r}"
+
+    return None
 
 
 class ParsedCodeChunk(TypedDict):
@@ -394,7 +432,10 @@ class Storage:
         return output
 
     def run_command(self, command: str) -> str:
-        """Run a shell command scoped to app_dir, return stdout+stderr (max 5000 chars)."""
+        """Run an allow-listed, read-only inspection command scoped to app_dir."""
+        error = _validate_command(command)
+        if error:
+            return f"Blocked: {error}"
         try:
             result = subprocess.run(
                 command, shell=True, cwd=self.app_dir,

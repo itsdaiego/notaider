@@ -45,7 +45,7 @@ dev = [
 notaider = "main:main"
 
 [tool.setuptools]
-py-modules = ["main", "code_workflow", "colors", "storage", "scope_analyzer", "observability"]
+py-modules = ["main", "code_workflow", "colors", "storage", "scope_analyzer", "observability", "secrets_scan"]
 
 [tool.black]
 line-length = 100

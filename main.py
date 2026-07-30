@@ -118,11 +118,11 @@ async def main():
     completer = WordCompleter(['@ask', '@add', '@code', "@list", 'exit', 'quit'], ignore_case=True, sentence=True)
 
     style = Style.from_dict({
-        'completion-menu.completion': 'bg:#1a2e1a #87d787',
-        'completion-menu.completion.current': 'bg:#005f00 #00ff87 bold',
-        'completion-menu': 'bg:#1a2e1a',
-        'command': '#00ff87 bold',
-        'prompt': '#00ff87 bold',
+        'completion-menu.completion': 'bg:ansiblack ansigreen',
+        'completion-menu.completion.current': 'bg:ansidarkgray ansibrightgreen bold',
+        'completion-menu': 'bg:ansiblack',
+        'command': 'ansibrightgreen bold',
+        'prompt': 'ansibrightgreen bold',
     })
 
     session = PromptSession(
@@ -134,6 +134,8 @@ async def main():
     )
 
     _print_logo()
+    ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
+    print(f"{Colors.MUTED}Model: {Colors.HEADER}{ai_model}{Colors.RESET}")
     print()
     print(f"{Colors.HEADER}Commands:")
     print(f"{Colors.HEADER}  @ask{Colors.MUTED}   <prompt>   - Enhance and process prompt")

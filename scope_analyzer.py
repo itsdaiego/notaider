@@ -5,6 +5,8 @@ from pydantic_ai import Agent
 
 from storage import CodebaseStats
 
+AGENT_TIMEOUT_SECONDS = 30
+
 
 class ScopeAnalysis(BaseModel):
     scope_type: Literal["single", "multiple", "file", "project", "all"] = Field(
@@ -33,7 +35,13 @@ class ScopeAnalysis(BaseModel):
 class ScopeAnalyzer:
     def __init__(self, model: str):
         self.model = model
-        self.agent = Agent(self.model, output_type=ScopeAnalysis, retries=3, instrument=True)
+        self.agent = Agent(
+            self.model,
+            output_type=ScopeAnalysis,
+            retries=3,
+            instrument=True,
+            model_settings={"timeout": AGENT_TIMEOUT_SECONDS},
+        )
 
     async def analyze(self, query: str, codebase_stats: CodebaseStats | None = None) -> ScopeAnalysis:
         stats_context = ""
